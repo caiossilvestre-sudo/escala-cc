@@ -8,5 +8,5 @@ python-jose[cryptography]==3.3.0
 python-multipart==0.0.9
 slowapi==0.1.9
 python-dotenv==1.0.1
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.12
 email-validator==2.2.0
