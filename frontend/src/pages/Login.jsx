@@ -22,24 +22,29 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F5F7", fontFamily: "system-ui, sans-serif" }}>
-      <form onSubmit={submit} style={{ background: "white", padding: 32, borderRadius: 14, border: "1px solid #E4E7EC", width: 340 }}>
-        <h1 style={{ fontSize: 18, marginBottom: 4 }}>Escala CC</h1>
-        <p style={{ fontSize: 12.5, color: "#6B7280", marginBottom: 20 }}>Entre com seu e-mail e senha</p>
+    <div className="login-wrap">
+      <form onSubmit={submit} className="login-card">
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, var(--primary), #F0A268)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "white" }}>EC</div>
+          <div>
+            <div className="display" style={{ fontWeight: 600, fontSize: 15 }}>Escala Suporte Técnico</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sistema de escalas</div>
+          </div>
+        </div>
 
-        <label style={{ fontSize: 11.5, fontWeight: 600, color: "#6B7280" }}>E-mail</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          style={{ width: "100%", padding: 9, marginTop: 4, marginBottom: 12, border: "1px solid #E4E7EC", borderRadius: 8 }} />
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label>E-mail</label>
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="field" style={{ marginBottom: 16 }}>
+          <label>Senha</label>
+          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
 
-        <label style={{ fontSize: 11.5, fontWeight: 600, color: "#6B7280" }}>Senha</label>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-          style={{ width: "100%", padding: 9, marginTop: 4, marginBottom: 16, border: "1px solid #E4E7EC", borderRadius: 8 }} />
+        {erro && <div className="warn-box" style={{ background: "#FBE2E5", borderColor: "#F3C3CB", color: "#A32E42" }}>{erro}</div>}
 
-        {erro && <div style={{ background: "#FBE2E5", color: "#A32E42", fontSize: 12.5, padding: 8, borderRadius: 8, marginBottom: 12 }}>{erro}</div>}
-
-        <button type="submit" disabled={carregando}
-          style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: "#E8752E", color: "white", fontWeight: 600, cursor: "pointer" }}>
-          {carregando ? "Entrando..." : "Entrar"}
+        <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", padding: 10 }} type="submit" disabled={carregando}>
+          {carregando ? "Entrando…" : "Entrar"}
         </button>
       </form>
     </div>

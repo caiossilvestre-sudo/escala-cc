@@ -3,8 +3,18 @@ import { api, setAccessToken, setSessionExpiredHandler } from "../api/client";
 
 const AuthContext = createContext(null);
 
+async function fetchFullProfile(base) {
+  try {
+    const me = await api.get("/colaboradores/me");
+    return { ...base, ...me };
+  } catch (_) {
+    return base; // se falhar, segue só com o básico do login/refresh
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null); // { colaborador_id, nome, role, must_change_password }
+  // user: { colaborador_id, nome, role, must_change_password, equipe, turno, escala_tipo, horario_inicio, horario_fim, email }
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(async () => {
@@ -15,14 +25,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     setSessionExpiredHandler(() => setUser(null));
-    // Tenta restaurar a sessão via refresh cookie (ex: depois de um F5).
     (async () => {
       try {
         const res = await fetch(`${api.API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           setAccessToken(data.access_token);
-          setUser(data);
+          const full = await fetchFullProfile(data);
+          setUser(full);
         }
       } catch (_) { /* sem sessão anterior, tudo bem */ }
       setLoading(false);
@@ -32,12 +42,18 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const data = await api.post("/auth/login", { email, password });
     setAccessToken(data.access_token);
-    setUser(data);
-    return data;
+    const full = await fetchFullProfile(data);
+    setUser(full);
+    return full;
   };
 
+  const reloadUser = useCallback(async () => {
+    const me = await api.get("/colaboradores/me");
+    setUser((prev) => ({ ...prev, ...me }));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, reloadUser }}>
       {children}
     </AuthContext.Provider>
   );
