@@ -52,18 +52,19 @@ export function AtestadosAdmin() {
   );
 }
 
-export default function MeusAtestados() {
+export default function MeusAtestados({ user }) {
   const { data, loading, error } = useApiList("/atestados");
+  const meus = data.filter((a) => a.colaborador_id === user.colaborador_id);
   return (
     <>
       <TopBar title="Meus atestados" subtitle="Consulta — o registro é feito pelo administrador" />
       <div className="content">
         <ErrorBox error={error} />
         <div className="card">
-          {loading ? <Spinner /> : data.length === 0 ? <div className="empty">Nenhum atestado registrado para você.</div> : (
+          {loading ? <Spinner /> : meus.length === 0 ? <div className="empty">Nenhum atestado registrado para você.</div> : (
             <table className="tbl">
               <thead><tr><th>Período</th><th>Motivo</th></tr></thead>
-              <tbody>{data.map((a) => <tr key={a.id}><td className="mono">{formatBRDia(a.data_inicio)} – {formatBRDia(a.data_fim)}</td><td>{a.motivo}</td></tr>)}</tbody>
+              <tbody>{meus.map((a) => <tr key={a.id}><td className="mono">{formatBRDia(a.data_inicio)} – {formatBRDia(a.data_fim)}</td><td>{a.motivo}</td></tr>)}</tbody>
             </table>
           )}
         </div>

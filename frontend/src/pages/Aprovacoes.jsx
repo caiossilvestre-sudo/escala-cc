@@ -25,6 +25,15 @@ export default function Aprovacoes() {
     } catch (e) { showToast(e.message); }
   };
 
+  const reabrir = async (id) => {
+    if (!window.confirm("Reabrir esta solicitação para poder decidir de novo?")) return;
+    try {
+      await api.post(`/solicitacoes/${id}/reabrir`);
+      showToast("Solicitação reaberta — ela volta pra lista de pendentes.");
+      solicitacoes.reload();
+    } catch (e) { showToast(e.message); }
+  };
+
   const loading = solicitacoes.loading || colaboradores.loading || plantoes.loading;
 
   return (
@@ -73,9 +82,10 @@ export default function Aprovacoes() {
               <div className="section-title">Histórico</div>
               {resolvidas.length === 0 ? <div className="empty">Sem histórico ainda.</div> : (
                 <table className="tbl">
-                  <thead><tr><th>Colaborador</th><th>Tipo</th><th>Data</th><th>Status</th><th>Motivo</th></tr></thead>
+                  <thead><tr><th>Colaborador</th><th>Tipo</th><th>Data</th><th>Status</th><th>Motivo</th><th></th></tr></thead>
                   <tbody>{resolvidas.map((s) => (
-                    <tr key={s.id}><td>{nome(s.colaborador_id)}</td><td>{TIPO_LABEL[s.tipo]}</td><td className="mono">{formatBRDia(s.data_solicitada)}</td><td><Pill status={s.status}>{s.status === "aprovada" ? "Aprovada" : "Rejeitada"}</Pill></td><td style={{ color: "var(--text-muted)" }}>{s.motivo_rejeicao || "—"}</td></tr>
+                    <tr key={s.id}><td>{nome(s.colaborador_id)}</td><td>{TIPO_LABEL[s.tipo]}</td><td className="mono">{formatBRDia(s.data_solicitada)}</td><td><Pill status={s.status}>{s.status === "aprovada" ? "Aprovada" : "Rejeitada"}</Pill></td><td style={{ color: "var(--text-muted)" }}>{s.motivo_rejeicao || "—"}</td>
+                      <td><button className="btn btn-ghost btn-sm" onClick={() => reabrir(s.id)}>Reabrir</button></td></tr>
                   ))}</tbody>
                 </table>
               )}

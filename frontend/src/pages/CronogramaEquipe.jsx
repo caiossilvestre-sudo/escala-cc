@@ -12,7 +12,7 @@ export default function CronogramaEquipe({ user }) {
   const ferias = useApiList("/ferias");
 
   const loading = colaboradores.loading || plantoes.loading;
-  const daEquipe = colaboradores.data.filter((c) => c.equipe === user.equipe);
+  const daEquipe = colaboradores.data.filter((c) => c.equipe === user.equipe && c.role !== "admin");
 
   return (
     <>

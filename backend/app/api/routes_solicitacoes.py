@@ -16,7 +16,8 @@ router = APIRouter(prefix="/solicitacoes", tags=["solicitacoes"])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(SolicitacaoFolga)
     if user.role != "admin":
-        q = q.filter(SolicitacaoFolga.colaborador_id == user.id)
+        colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
+        q = q.filter(SolicitacaoFolga.colaborador_id.in_(colegas_ids))
     return q.order_by(SolicitacaoFolga.data_solicitada.desc()).all()
 
 
@@ -68,6 +69,24 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
     db.refresh(nova)
     log_action(db, request, user, "solicitar_folga", "solicitacao_folga", nova.id)
     return nova
+
+
+@router.post("/{solicitacao_id}/reabrir", response_model=SolicitacaoOut)
+def reabrir(solicitacao_id: str, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+    """Volta uma solicitação já aprovada/rejeitada para 'pendente', pra permitir
+    corrigir uma decisão (ex: aprovou por engano, precisa cancelar)."""
+    alvo = db.get(SolicitacaoFolga, solicitacao_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação não encontrada.")
+    if alvo.status == "pendente":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Essa solicitação já está pendente.")
+    alvo.status = "pendente"
+    alvo.motivo_rejeicao = None
+    alvo.resolved_by = None
+    alvo.resolved_at = None
+    db.commit()
+    log_action(db, request, admin, "reabrir_folga", "solicitacao_folga", alvo.id)
+    return alvo
 
 
 @router.post("/{solicitacao_id}/resolver", response_model=SolicitacaoOut)

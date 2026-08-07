@@ -84,8 +84,9 @@ function GerarSection({ onGerado, showToast }) {
 function SugestaoManual({ colaboradores, plantoes, ferias, atestados, solicitacoes, onAtribuido, showToast, equipeOptions }) {
   const [criterio, setCriterio] = useState({ equipe: EQUIPES[0], data: todayISO(), horario_inicio: "08:00", horario_fim: "16:00", tipo: "Plantão manual" });
   const [buscou, setBuscou] = useState(false);
+  const candidatos = colaboradores.filter((c) => c.role !== "admin");
 
-  const resultados = colaboradores.map((c) => ({ colaborador: c, ...checarElegibilidade(c, criterio, plantoes, ferias, atestados, solicitacoes) }));
+  const resultados = candidatos.map((c) => ({ colaborador: c, ...checarElegibilidade(c, criterio, plantoes, ferias, atestados, solicitacoes) }));
   const elegiveis = ordenarPorJustica(resultados.filter((r) => r.elegivel), plantoes, criterio.data);
   const inelegiveis = resultados.filter((r) => !r.elegivel);
 
@@ -157,7 +158,16 @@ export default function Plantoes() {
   };
   const confirmar = async (id) => { try { await api.post(`/plantoes/${id}/confirmar`); plantoes.reload(); } catch (e) { showToast(e.message); } };
   const reatribuir = async (id, novoId) => { try { await api.post(`/plantoes/${id}/reatribuir?novo_colaborador_id=${novoId}`); plantoes.reload(); showToast("Reatribuído."); } catch (e) { showToast(e.message); } };
-  const remover = async (id) => { try { await api.delete(`/plantoes/${id}`); plantoes.reload(); } catch (e) { showToast(e.message); } };
+  const remover = async (id) => {
+    if (!window.confirm("Remover este plantão? Essa ação não pode ser desfeita.")) return;
+    try {
+      await api.delete(`/plantoes/${id}`);
+      showToast("Plantão removido.");
+      plantoes.reload();
+    } catch (e) {
+      showToast(e.message || "Não foi possível remover o plantão.");
+    }
+  };
 
   return (
     <>
@@ -173,7 +183,7 @@ export default function Plantoes() {
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="section-title">Novo plantão (manual)</div>
               <div className="form-grid">
-                <div className="field"><label>Colaborador</label><select value={form.colaborador_id} onChange={(e) => setForm({ ...form, colaborador_id: e.target.value })}><option value="">Selecione</option>{colaboradores.data.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+                <div className="field"><label>Colaborador</label><select value={form.colaborador_id} onChange={(e) => setForm({ ...form, colaborador_id: e.target.value })}><option value="">Selecione</option>{colaboradores.data.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
                 <div className="field"><label>Data</label><input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} /></div>
                 <div className="field"><label>Início</label><input type="time" value={form.horario_inicio} onChange={(e) => setForm({ ...form, horario_inicio: e.target.value })} /></div>
                 <div className="field"><label>Fim</label><input type="time" value={form.horario_fim} onChange={(e) => setForm({ ...form, horario_fim: e.target.value })} /></div>
@@ -191,7 +201,7 @@ export default function Plantoes() {
                     <tr key={p.id}>
                       <td>{p.sugerido ? (
                         <select value={p.colaborador_id} onChange={(e) => reatribuir(p.id, e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 12 }}>
-                          {colaboradores.data.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                          {colaboradores.data.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                         </select>
                       ) : nome(p.colaborador_id)}</td>
                       <td className="mono">{formatBRDia(p.data)}</td><td className="mono">{p.horario_inicio}–{p.horario_fim}</td><td>{p.tipo || "—"}</td>

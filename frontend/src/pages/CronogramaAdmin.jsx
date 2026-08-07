@@ -87,7 +87,7 @@ export default function CronogramaAdmin() {
           <>
             {showForm && <NovaAusenciaForm colaboradores={colaboradores.data} onSubmit={registrarAusencia} onCancel={() => setShowForm(false)} />}
             <CronogramaGrid
-              colaboradores={colaboradores.data} plantoes={plantoes.data} solicitacoes={solicitacoes.data}
+              colaboradores={colaboradores.data.filter((c) => c.role !== "admin")} plantoes={plantoes.data} solicitacoes={solicitacoes.data}
               atestados={atestados.data} ferias={ferias.data}
               mesFiltro={mes} setMesFiltro={setMes} equipeFiltro={equipe} setEquipeFiltro={setEquipe}
               equipesOptions={EQUIPES} showEquipeSelector

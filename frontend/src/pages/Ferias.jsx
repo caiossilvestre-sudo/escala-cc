@@ -83,7 +83,7 @@ export function FeriasAdmin() {
   );
 }
 
-export default function MinhasFerias() {
+export default function MinhasFerias({ user }) {
   const { data, loading, error, reload } = useApiList("/ferias");
   const { toast, showToast } = useToast();
   const [dataInicio, setDataInicio] = useState(todayISO());
@@ -99,7 +99,7 @@ export default function MinhasFerias() {
   };
 
   const stageIndex = (status) => (status === "ajustar" || status === "rejeitada" ? -1 : STAGES.indexOf(status));
-  const minhas = [...data].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  const minhas = data.filter((f) => f.colaborador_id === user.colaborador_id).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 
   return (
     <>

@@ -72,7 +72,7 @@ def reatribuir(plantao_id: str, novo_colaborador_id: str, request: Request, db: 
 def gerar(body: GerarPlantoesIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
     alvos = datas_alvo_do_mes(db, body.mes)
     templates = db.query(PlantaoTemplate).all()
-    colaboradores = db.query(Colaborador).filter(Colaborador.status == "ativo").all()
+    colaboradores = db.query(Colaborador).filter(Colaborador.status == "ativo", Colaborador.role != "admin").all()
 
     novos = []
     pendencias = []

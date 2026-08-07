@@ -20,12 +20,17 @@ REFRESH_COOKIE = "refresh_token"
 
 
 def _set_refresh_cookie(response: Response, raw_token: str):
+    # Frontend e backend ficam em domínios diferentes (GitHub Pages x Render),
+    # então o cookie de sessão precisa de SameSite=None + Secure pra o
+    # navegador aceitar enviá-lo entre eles. Isso só funciona sobre HTTPS
+    # (verdadeiro em produção); em desenvolvimento local (http) usamos Lax.
+    cross_site = settings.environment == "production"
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=raw_token,
         httponly=True,
-        secure=settings.environment == "production",
-        samesite="lax",
+        secure=cross_site,
+        samesite="none" if cross_site else "lax",
         max_age=settings.refresh_token_expire_days * 24 * 3600,
         path="/auth",
     )
@@ -122,7 +127,8 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
         if stored:
             stored.revoked = True
             db.commit()
-    response.delete_cookie(REFRESH_COOKIE, path="/auth")
+    cross_site = settings.environment == "production"
+    response.delete_cookie(REFRESH_COOKIE, path="/auth", secure=cross_site, samesite="none" if cross_site else "lax")
     return {"ok": True}
 
 

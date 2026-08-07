@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { useIdleLogout } from "./lib/hooks";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import CronogramaAdmin from "./pages/CronogramaAdmin";
@@ -43,6 +44,7 @@ function Shell() {
 
   const isAdmin = user?.role === "admin";
   useEffect(() => { setTab(null); }, [user?.role]);
+  useIdleLogout(logout, 15 * 60 * 1000, !!user);
 
   if (loading) return null;
   if (!user) return <Login />;
@@ -79,8 +81,8 @@ function Shell() {
         {activeTab === "plantoes" && isAdmin && <Plantoes />}
         {activeTab === "feriados" && isAdmin && <Feriados />}
         {activeTab === "aprovacoes" && isAdmin && <Aprovacoes />}
-        {activeTab === "ferias" && (isAdmin ? <FeriasAdmin /> : <MinhasFerias />)}
-        {activeTab === "atestados" && (isAdmin ? <AtestadosAdmin /> : <MeusAtestados />)}
+        {activeTab === "ferias" && (isAdmin ? <FeriasAdmin /> : <MinhasFerias user={user} />)}
+        {activeTab === "atestados" && (isAdmin ? <AtestadosAdmin /> : <MeusAtestados user={user} />)}
         {activeTab === "avisos" && (isAdmin ? <AvisosAdmin /> : <PainelAvisos />)}
         {activeTab === "meus-plantoes" && !isAdmin && <MeusPlantoes user={user} />}
         {activeTab === "cronograma-equipe" && !isAdmin && <CronogramaEquipe user={user} />}

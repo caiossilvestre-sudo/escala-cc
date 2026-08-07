@@ -18,7 +18,8 @@ TRANSICOES_VALIDAS = {
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(Ferias)
     if user.role != "admin":
-        q = q.filter(Ferias.colaborador_id == user.id)
+        colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
+        q = q.filter(Ferias.colaborador_id.in_(colegas_ids))
     return q.order_by(Ferias.created_at.desc()).all()
 
 
