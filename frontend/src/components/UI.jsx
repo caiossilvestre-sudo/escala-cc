@@ -1,6 +1,25 @@
 import { useState } from "react";
 import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoDia } from "../lib/helpers";
 
+/** Select que também permite digitar um valor novo (ex: adicionar um setor ou uma escala que ainda não existe). */
+export function EditableSelect({ value, onChange, options, placeholder = "Novo valor" }) {
+  const [customMode, setCustomMode] = useState(!options.includes(value) && !!value);
+  if (customMode) {
+    return (
+      <div style={{ display: "flex", gap: 4 }}>
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ flex: 1 }} />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustomMode(false); onChange(options[0] || ""); }} title="Voltar para a lista">✕</button>
+      </div>
+    );
+  }
+  return (
+    <select value={value} onChange={(e) => { if (e.target.value === "__novo__") { setCustomMode(true); onChange(""); } else onChange(e.target.value); }}>
+      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      <option value="__novo__">+ Adicionar novo…</option>
+    </select>
+  );
+}
+
 export function Pill({ status, children }) {
   return <span className={`pill ${status}`}>{children}</span>;
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
+import { TopBar, Pill, Spinner, ErrorBox, Toast, EditableSelect } from "../components/UI";
 import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
 import {
@@ -7,7 +7,7 @@ import {
   checarElegibilidade, ordenarPorJustica, contarPlantoesRecentes,
 } from "../lib/helpers";
 
-function TemplatesSection({ templates, onReload, showToast }) {
+function TemplatesSection({ templates, onReload, showToast, equipeOptions, turnoOptions }) {
   const [form, setForm] = useState({ nome: "", equipe: EQUIPES[0], turno: TURNOS[0], horario_inicio: "08:00", horario_fim: "14:00" });
   const submit = async () => {
     if (!form.nome.trim()) return;
@@ -26,8 +26,8 @@ function TemplatesSection({ templates, onReload, showToast }) {
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>Cadastre os "slots" fixos de cobertura de domingo/feriado. A geração automática usa esses horários.</div>
       <div className="form-grid">
         <div className="field"><label>Nome</label><input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="ex: Cobertura manhã N1" /></div>
-        <div className="field"><label>Setor</label><select value={form.equipe} onChange={(e) => setForm({ ...form, equipe: e.target.value })}>{EQUIPES.map((e) => <option key={e}>{e}</option>)}</select></div>
-        <div className="field"><label>Turno</label><select value={form.turno} onChange={(e) => setForm({ ...form, turno: e.target.value })}>{TURNOS.map((t) => <option key={t}>{t}</option>)}</select></div>
+        <div className="field"><label>Setor</label><EditableSelect value={form.equipe} onChange={(v) => setForm({ ...form, equipe: v })} options={equipeOptions} /></div>
+        <div className="field"><label>Turno</label><EditableSelect value={form.turno} onChange={(v) => setForm({ ...form, turno: v })} options={turnoOptions} /></div>
         <div className="field"><label>Início</label><input type="time" value={form.horario_inicio} onChange={(e) => setForm({ ...form, horario_inicio: e.target.value })} /></div>
         <div className="field"><label>Fim</label><input type="time" value={form.horario_fim} onChange={(e) => setForm({ ...form, horario_fim: e.target.value })} /></div>
       </div>
@@ -81,7 +81,7 @@ function GerarSection({ onGerado, showToast }) {
   );
 }
 
-function SugestaoManual({ colaboradores, plantoes, ferias, atestados, solicitacoes, onAtribuido, showToast }) {
+function SugestaoManual({ colaboradores, plantoes, ferias, atestados, solicitacoes, onAtribuido, showToast, equipeOptions }) {
   const [criterio, setCriterio] = useState({ equipe: EQUIPES[0], data: todayISO(), horario_inicio: "08:00", horario_fim: "16:00", tipo: "Plantão manual" });
   const [buscou, setBuscou] = useState(false);
 
@@ -102,7 +102,7 @@ function SugestaoManual({ colaboradores, plantoes, ferias, atestados, solicitaco
       <div className="section-title">Sugestão manual de plantão</div>
       <div className="info-box">Verifica setor, conflito de horário e férias aprovadas — e ordena por justiça (menos plantões nos últimos 60 dias primeiro).</div>
       <div className="form-grid">
-        <div className="field"><label>Setor</label><select value={criterio.equipe} onChange={(e) => { setCriterio({ ...criterio, equipe: e.target.value }); setBuscou(false); }}>{EQUIPES.map((e) => <option key={e}>{e}</option>)}</select></div>
+        <div className="field"><label>Setor</label><EditableSelect value={criterio.equipe} onChange={(v) => { setCriterio({ ...criterio, equipe: v }); setBuscou(false); }} options={equipeOptions} /></div>
         <div className="field"><label>Data</label><input type="date" value={criterio.data} onChange={(e) => { setCriterio({ ...criterio, data: e.target.value }); setBuscou(false); }} /></div>
         <div className="field"><label>Início</label><input type="time" value={criterio.horario_inicio} onChange={(e) => { setCriterio({ ...criterio, horario_inicio: e.target.value }); setBuscou(false); }} /></div>
         <div className="field"><label>Fim</label><input type="time" value={criterio.horario_fim} onChange={(e) => { setCriterio({ ...criterio, horario_fim: e.target.value }); setBuscou(false); }} /></div>
@@ -143,6 +143,8 @@ export default function Plantoes() {
 
   const loading = templates.loading || plantoes.loading || colaboradores.loading;
   const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
+  const equipeOptions = Array.from(new Set([...EQUIPES, ...colaboradores.data.map((c) => c.equipe), ...templates.data.map((t) => t.equipe)])).filter(Boolean);
+  const turnoOptions = Array.from(new Set([...TURNOS, ...colaboradores.data.map((c) => c.turno), ...templates.data.map((t) => t.turno)])).filter(Boolean);
 
   const criarManual = async () => {
     if (!form.colaborador_id || !form.horario_inicio || !form.horario_fim) { showToast("Preencha colaborador e horários."); return; }
@@ -164,9 +166,9 @@ export default function Plantoes() {
         <ErrorBox error={templates.error || plantoes.error} />
         {loading ? <Spinner /> : (
           <>
-            <TemplatesSection templates={templates.data} onReload={templates.reload} showToast={showToast} />
+            <TemplatesSection templates={templates.data} onReload={templates.reload} showToast={showToast} equipeOptions={equipeOptions} turnoOptions={turnoOptions} />
             <GerarSection onGerado={plantoes.reload} showToast={showToast} />
-            <SugestaoManual colaboradores={colaboradores.data} plantoes={plantoes.data} ferias={ferias.data} atestados={atestados.data} solicitacoes={solicitacoes.data} onAtribuido={plantoes.reload} showToast={showToast} />
+            <SugestaoManual colaboradores={colaboradores.data} plantoes={plantoes.data} ferias={ferias.data} atestados={atestados.data} solicitacoes={solicitacoes.data} onAtribuido={plantoes.reload} showToast={showToast} equipeOptions={equipeOptions} />
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="section-title">Novo plantão (manual)</div>

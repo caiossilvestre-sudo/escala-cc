@@ -49,13 +49,19 @@ def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), 
 
 @router.patch("/{colaborador_id}", response_model=ColaboradorOut)
 def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Muda equipe/turno/escala de um colaborador já existente. Toda mudança de
-    equipe ou turno fica registrada no histórico (com motivo obrigatório), para
-    que relatórios antigos continuem corretos e dê pra saber depois quando e
-    por que a pessoa mudou de time."""
+    """Edita um colaborador já existente: nome, perfil (admin/colaborador),
+    equipe, turno, escala ou horário. Toda mudança de equipe ou turno fica
+    registrada no histórico (com motivo obrigatório), para que relatórios
+    antigos continuem corretos e dê pra saber depois quando e por que a
+    pessoa mudou de time."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+
+    if body.role is not None and body.role != alvo.role and alvo.role == "admin" and body.role != "admin":
+        outros_admins = db.query(Colaborador).filter(Colaborador.role == "admin", Colaborador.status == "ativo", Colaborador.id != alvo.id).count()
+        if outros_admins == 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Não é possível rebaixar o único administrador ativo do sistema.")
 
     equipe_mudou = body.equipe is not None and body.equipe != alvo.equipe
     turno_mudou = body.turno is not None and body.turno != alvo.turno
@@ -68,6 +74,10 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
             motivo=body.motivo, alterado_por=admin.id,
         ))
 
+    if body.nome is not None:
+        alvo.nome = body.nome
+    if body.role is not None:
+        alvo.role = body.role
     if body.equipe is not None:
         alvo.equipe = body.equipe
     if body.turno is not None:
@@ -81,7 +91,7 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
 
     db.commit()
     db.refresh(alvo)
-    log_action(db, request, admin, "atualizar_colaborador", "colaborador", alvo.id, {"motivo": body.motivo})
+    log_action(db, request, admin, "atualizar_colaborador", "colaborador", alvo.id, {"motivo": body.motivo, "role": body.role})
     return alvo
 
 

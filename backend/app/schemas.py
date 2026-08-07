@@ -65,8 +65,11 @@ class ColaboradorOut(BaseModel):
 
 
 class ColaboradorUpdateIn(BaseModel):
-    """Para trocar de equipe/turno/escala. Sempre exige um motivo — isso vira
-    registro permanente no histórico do colaborador."""
+    """Para editar dados de um colaborador já existente. Sempre exige um motivo —
+    isso vira registro permanente no histórico do colaborador quando muda
+    setor ou turno."""
+    nome: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    role: Optional[RoleType] = None
     equipe: Optional[str] = None
     turno: Optional[str] = None
     escala_tipo: Optional[str] = None
