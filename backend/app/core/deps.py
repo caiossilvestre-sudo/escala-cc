@@ -30,6 +30,14 @@ def require_admin(user: Colaborador = Depends(get_current_colaborador)) -> Colab
     return user
 
 
+def require_leitura_ampla(user: Colaborador = Depends(get_current_colaborador)) -> Colaborador:
+    """Pra rotas de consulta que admin e visualizador podem ver, mas
+    colaborador comum não (dados sensíveis/administrativos, só leitura)."""
+    if user.role not in ("admin", "visualizador"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Acesso restrito a administradores e visualizadores.")
+    return user
+
+
 def log_action(db: Session, request: Request, user: Colaborador | None, acao: str, entidade: str, entidade_id: str | None = None, detalhes: dict | None = None):
     """Grava um registro de auditoria. Nunca deve derrubar a requisição principal
     se falhar — por isso é chamado depois da operação principal já ter sucedido."""

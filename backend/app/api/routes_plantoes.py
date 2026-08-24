@@ -14,9 +14,10 @@ templates_router = APIRouter(prefix="/plantao-templates", tags=["plantao-templat
 @router.get("", response_model=list[PlantaoOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(Plantao)
-    if user.role != "admin":
+    if user.role == "colaborador":
         # Plantões ainda "sugeridos" (gerados automaticamente, aguardando confirmação
         # do admin) não aparecem pros colaboradores — só depois de confirmados.
+        # Admin e visualizador veem tudo.
         q = q.filter(Plantao.sugerido == False)  # noqa: E712
     return q.order_by(Plantao.data).all()
 

@@ -17,7 +17,7 @@ TRANSICOES_VALIDAS = {
 @router.get("", response_model=list[FeriasOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(Ferias)
-    if user.role != "admin":
+    if user.role == "colaborador":
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
         q = q.filter(Ferias.colaborador_id.in_(colegas_ids))
     return q.order_by(Ferias.created_at.desc()).all()
@@ -25,6 +25,8 @@ def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_curren
 
 @router.post("", response_model=FeriasOut, status_code=status.HTTP_201_CREATED)
 def solicitar(body: FeriasIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
+    if user.role == "visualizador":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Perfil de visualização não pode realizar essa ação.")
     if body.data_fim < body.data_inicio:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Data final não pode ser antes da inicial.")
     nova = Ferias(colaborador_id=user.id, data_inicio=body.data_inicio, data_fim=body.data_fim, status="solicitada")

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/solicitacoes", tags=["solicitacoes"])
 @router.get("", response_model=list[SolicitacaoOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(SolicitacaoFolga)
-    if user.role != "admin":
+    if user.role == "colaborador":
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
         q = q.filter(SolicitacaoFolga.colaborador_id.in_(colegas_ids))
     return q.order_by(SolicitacaoFolga.data_solicitada.desc()).all()
@@ -23,6 +23,8 @@ def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_curren
 
 @router.post("", response_model=SolicitacaoOut, status_code=status.HTTP_201_CREATED)
 def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
+    if user.role == "visualizador":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Perfil de visualização não pode realizar essa ação.")
     if body.tipo == "folga_plantao":
         if not body.plantao_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Informe o plantão vinculado.")
@@ -36,7 +38,6 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
         if body.data_solicitada.toordinal() > prazo or body.data_solicitada <= plantao.data:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A data da folga deve estar entre o dia seguinte ao plantão e até 6 dias depois.")
 
-    # checagem de conflito: colegas com horário igual/parecido já de folga na mesma data
     colegas = db.query(Colaborador).filter(Colaborador.id != user.id).all()
     colegas_similares_ids = {
         c.id for c in colegas

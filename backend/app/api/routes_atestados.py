@@ -12,7 +12,7 @@ router = APIRouter(prefix="/atestados", tags=["atestados"])
 @router.get("", response_model=list[AtestadoOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(Atestado)
-    if user.role != "admin":
+    if user.role == "colaborador":
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
         q = q.filter(Atestado.colaborador_id.in_(colegas_ids))
     return q.order_by(Atestado.data_inicio.desc()).all()

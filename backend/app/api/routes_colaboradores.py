@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_colaborador, log_action, require_admin
+from app.core.deps import get_current_colaborador, log_action, require_admin, require_leitura_ampla
 from app.core.security import hash_password
 from app.db.models import Colaborador, HistoricoEquipe, Plantao, SolicitacaoFolga, Ferias
 from app.db.session import get_db
@@ -49,11 +49,9 @@ def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), 
 
 @router.patch("/{colaborador_id}", response_model=ColaboradorOut)
 def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Edita um colaborador já existente: nome, perfil (admin/colaborador),
-    equipe, turno, escala ou horário. Toda mudança de equipe ou turno fica
-    registrada no histórico (com motivo obrigatório), para que relatórios
-    antigos continuem corretos e dê pra saber depois quando e por que a
-    pessoa mudou de time."""
+    """Edita um colaborador já existente: nome, perfil (admin/colaborador/
+    visualizador), equipe, turno, escala ou horário. Toda mudança de equipe
+    ou turno fica registrada no histórico (com motivo obrigatório)."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
@@ -96,7 +94,7 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
 
 
 @router.get("/{colaborador_id}/historico-equipe", response_model=list[HistoricoEquipeOut])
-def historico_equipe(colaborador_id: str, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def historico_equipe(colaborador_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(require_leitura_ampla)):
     return (
         db.query(HistoricoEquipe)
         .filter(HistoricoEquipe.colaborador_id == colaborador_id)
@@ -110,12 +108,7 @@ def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Sessio
     """Desligamento é sempre um soft-delete: o colaborador vira 'inativo' e some
     das listas de cadastro/atribuição automática, mas todo o histórico dele
     (plantões, folgas, atestados, férias já registrados) continua intacto para
-    relatórios e auditoria — nada é apagado.
-
-    Não some sozinho com plantões futuros já atribuídos a essa pessoa, porque
-    isso é uma decisão do admin (reatribuir manualmente ou cancelar a
-    cobertura). Em vez disso, a resposta avisa quais plantões e solicitações
-    em aberto precisam de atenção."""
+    relatórios e auditoria — nada é apagado."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
@@ -136,16 +129,6 @@ def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Sessio
         .order_by(Plantao.data)
         .all()
     )
-    folgas_pendentes = (
-        db.query(SolicitacaoFolga)
-        .filter(SolicitacaoFolga.colaborador_id == alvo.id, SolicitacaoFolga.status == "pendente")
-        .all()
-    )
-    ferias_em_andamento = (
-        db.query(Ferias)
-        .filter(Ferias.colaborador_id == alvo.id, Ferias.status.in_(["solicitada", "enviado_rh"]))
-        .all()
-    )
 
     log_action(db, request, admin, "desligar_colaborador", "colaborador", alvo.id, {
         "motivo": body.motivo,
@@ -156,9 +139,7 @@ def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Sessio
 
 
 @router.get("/{colaborador_id}/pendencias-desligamento")
-def pendencias_desligamento(colaborador_id: str, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Consulta auxiliar: o que precisa de atenção depois de desligar alguém
-    (ou antes de desligar, pra já ver o impacto)."""
+def pendencias_desligamento(colaborador_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(require_leitura_ampla)):
     plantoes_futuros = (
         db.query(Plantao)
         .filter(Plantao.colaborador_id == colaborador_id, Plantao.data >= date.today())

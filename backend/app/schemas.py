@@ -33,7 +33,9 @@ class TokenOut(BaseModel):
 
 # --------------------------------------------------------- colaborador ----
 
-RoleType = Literal["admin", "colaborador"]
+# "visualizador" enxerga tudo (igual admin), mas nenhuma rota de escrita
+# aceita esse papel — só "admin" passa pelo require_admin.
+RoleType = Literal["admin", "colaborador", "visualizador"]
 
 
 class ColaboradorIn(BaseModel):
@@ -156,7 +158,6 @@ class ResolverSolicitacaoIn(BaseModel):
     @field_validator("motivo_rejeicao")
     @classmethod
     def exige_motivo_se_rejeitar(cls, v, info):
-        # validação cruzada feita na rota (precisa do valor de 'aprovar')
         return v
 
 
