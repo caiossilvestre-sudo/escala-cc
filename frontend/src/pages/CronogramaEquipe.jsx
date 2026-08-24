@@ -18,7 +18,7 @@ export default function CronogramaEquipe({ user }) {
   return (
     <>
       <TopBar title="Cronograma do setor" subtitle={`Visão mensal da equipe ${user.equipe || ""}`} />
-      <div className="content">
+      <div className="content content-wide">
         <ErrorBox error={colaboradores.error} />
         {loading ? <Spinner /> : (
           <CronogramaGrid

@@ -122,8 +122,8 @@ export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestado
       <div className="cronograma-wrap">
         <table className="cronograma">
           <colgroup>
-            <col style={{ width: 170 }} />
-            {dias.map((d) => <col key={d} style={{ width: `calc((100% - 170px) / ${dias.length})` }} />)}
+            <col style={{ width: 190 }} />
+            {dias.map((d) => <col key={d} style={{ width: `calc((100% - 190px) / ${dias.length})` }} />)}
           </colgroup>
           <thead>
             <tr>

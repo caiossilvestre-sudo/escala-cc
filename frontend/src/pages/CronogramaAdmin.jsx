@@ -81,7 +81,7 @@ export default function CronogramaAdmin() {
     <>
       <TopBar title="Cronograma" subtitle="Visão mensal por colaborador — plantões, folgas, atestados e férias"
         right={<button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>Nova ausência</button>} />
-      <div className="content">
+      <div className="content content-wide">
         <ErrorBox error={error} />
         {loading ? <Spinner /> : (
           <>
