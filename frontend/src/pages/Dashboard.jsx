@@ -1,7 +1,63 @@
 import { useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox } from "../components/UI";
 import { useApiList } from "../lib/hooks";
-import { currentMonthKey, monthLabel, formatBRDia, TIPO_LABEL } from "../lib/helpers";
+import { currentMonthKey, monthLabel, formatBRDia, todayISO, rangeOverlapsDate, TIPO_LABEL } from "../lib/helpers";
+
+function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados }) {
+  const hoje = todayISO();
+  const agora = new Date();
+  const horaAtual = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
+  const diaSemana = agora.getDay(); // 0 = domingo
+  const feriadoHoje = feriados.find((f) => f.data === hoje && (f.tipo === "obrigatorio" || f.trabalha));
+  const diaEspecial = diaSemana === 0 || !!feriadoHoje;
+
+  let lista = [];
+  if (diaEspecial) {
+    lista = plantoes
+      .filter((p) => p.data === hoje)
+      .map((p) => ({ colaborador: colaboradores.find((c) => c.id === p.colaborador_id), inicio: p.horario_inicio, fim: p.horario_fim, tipo: `Plantão — ${p.tipo || ""}` }))
+      .filter((x) => x.colaborador);
+  } else {
+    lista = colaboradores
+      .filter((c) => c.role !== "admin")
+      .filter((c) => c.horario_inicio <= horaAtual && horaAtual <= c.horario_fim)
+      .filter((c) => {
+        const temFolga = solicitacoes.some((s) => s.colaborador_id === c.id && s.status === "aprovada" && s.data_solicitada === hoje);
+        const temAtestado = atestados.some((a) => a.colaborador_id === c.id && rangeOverlapsDate(hoje, a.data_inicio, a.data_fim));
+        const temFerias = ferias.some((f) => f.colaborador_id === c.id && f.status === "aprovada" && rangeOverlapsDate(hoje, f.data_inicio, f.data_fim));
+        return !temFolga && !temAtestado && !temFerias;
+      })
+      .map((c) => ({ colaborador: c, inicio: c.horario_inicio, fim: c.horario_fim, tipo: c.equipe }));
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="section-title">
+        Quem está em expediente agora
+        <span className="mono" style={{ fontWeight: 400, fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{horaAtual}</span>
+      </div>
+      {diaEspecial && (
+        <div className="info-box">
+          {feriadoHoje ? `Hoje é feriado (${feriadoHoje.nome})` : "Hoje é domingo"} — só quem está de plantão aparece aqui, expediente normal não se aplica.
+        </div>
+      )}
+      {lista.length === 0 ? (
+        <div className="empty">{diaEspecial ? "Ninguém de plantão agora." : "Ninguém em expediente neste horário."}</div>
+      ) : (
+        <table className="tbl">
+          <thead><tr><th>Nome</th><th>Setor</th><th>Horário</th></tr></thead>
+          <tbody>{lista.map((x) => (
+            <tr key={x.colaborador.id}>
+              <td>{x.colaborador.nome}</td>
+              <td><Pill status="plantao">{x.tipo}</Pill></td>
+              <td className="mono">{x.inicio}–{x.fim}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 export default function Dashboard({ onNavigate }) {
   const [mes, setMes] = useState(currentMonthKey());
@@ -10,9 +66,10 @@ export default function Dashboard({ onNavigate }) {
   const solicitacoes = useApiList("/solicitacoes");
   const atestados = useApiList("/atestados");
   const ferias = useApiList("/ferias");
+  const feriados = useApiList("/feriados");
 
-  const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading;
-  const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error;
+  const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading || feriados.loading;
+  const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error || feriados.error;
 
   const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
   const plantoesMes = plantoes.data.filter((p) => p.data.slice(0, 7) === mes);
@@ -49,6 +106,8 @@ export default function Dashboard({ onNavigate }) {
                 <span className="dot" style={{ background: "var(--ferias)" }} /><div className="num">{feriasPendentes.length}</div><div className="label">Férias aguardando ação {onNavigate && "→"}</div>
               </button>
             </div>
+
+            <EmExpedienteAgora colaboradores={colaboradores.data} plantoes={plantoes.data} solicitacoes={solicitacoes.data} atestados={atestados.data} ferias={ferias.data} feriados={feriados.data} />
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="section-title">Plantões do mês</div>
