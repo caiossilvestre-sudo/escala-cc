@@ -51,10 +51,11 @@ export default function CronogramaAdmin() {
   const solicitacoes = useApiList("/solicitacoes");
   const atestados = useApiList("/atestados");
   const ferias = useApiList("/ferias");
+  const feriados = useApiList("/feriados");
   const { toast, showToast } = useToast();
 
-  const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading;
-  const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error;
+  const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading || feriados.loading;
+  const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error || feriados.error;
 
   const registrarAusencia = async (form) => {
     try {
@@ -62,7 +63,6 @@ export default function CronogramaAdmin() {
         await api.post("/atestados", { colaborador_id: form.colaborador_id, data_inicio: form.data_inicio, data_fim: form.data_fim, motivo: form.motivo || "—" });
         await atestados.reload();
       } else if (form.tipo === "ferias") {
-        // Cria como solicitação e já avança pra aprovada (registro direto do admin)
         showToast("Para férias, use a aba Férias — lá o fluxo de 3 etapas já cobre o registro direto.");
         setShowForm(false);
         return;
@@ -88,7 +88,7 @@ export default function CronogramaAdmin() {
             {showForm && <NovaAusenciaForm colaboradores={colaboradores.data} onSubmit={registrarAusencia} onCancel={() => setShowForm(false)} />}
             <CronogramaGrid
               colaboradores={colaboradores.data.filter((c) => c.role !== "admin")} plantoes={plantoes.data} solicitacoes={solicitacoes.data}
-              atestados={atestados.data} ferias={ferias.data}
+              atestados={atestados.data} ferias={ferias.data} feriados={feriados.data}
               mesFiltro={mes} setMesFiltro={setMes} equipeFiltro={equipe} setEquipeFiltro={setEquipe}
               equipesOptions={EQUIPES} showEquipeSelector
             />

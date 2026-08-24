@@ -10,8 +10,9 @@ export default function CronogramaEquipe({ user }) {
   const solicitacoes = useApiList("/solicitacoes");
   const atestados = useApiList("/atestados");
   const ferias = useApiList("/ferias");
+  const feriados = useApiList("/feriados");
 
-  const loading = colaboradores.loading || plantoes.loading;
+  const loading = colaboradores.loading || plantoes.loading || feriados.loading;
   const daEquipe = colaboradores.data.filter((c) => c.equipe === user.equipe && c.role !== "admin");
 
   return (
@@ -22,7 +23,7 @@ export default function CronogramaEquipe({ user }) {
         {loading ? <Spinner /> : (
           <CronogramaGrid
             colaboradores={daEquipe} plantoes={plantoes.data} solicitacoes={solicitacoes.data}
-            atestados={atestados.data} ferias={ferias.data}
+            atestados={atestados.data} ferias={ferias.data} feriados={feriados.data}
             mesFiltro={mes} setMesFiltro={setMes} equipeFiltro={user.equipe} setEquipeFiltro={() => {}}
             equipesOptions={[]} showEquipeSelector={false}
           />

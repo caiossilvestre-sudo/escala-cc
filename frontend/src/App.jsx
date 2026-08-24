@@ -75,7 +75,7 @@ function Shell() {
       </aside>
 
       <main className="main">
-        {activeTab === "dashboard" && isAdmin && <Dashboard />}
+        {activeTab === "dashboard" && isAdmin && <Dashboard onNavigate={setTab} />}
         {activeTab === "cronograma" && isAdmin && <CronogramaAdmin />}
         {activeTab === "colaboradores" && isAdmin && <Colaboradores />}
         {activeTab === "plantoes" && isAdmin && <Plantoes />}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoDia } from "../lib/helpers";
+import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoDia, mapaFeriadosPorData } from "../lib/helpers";
 
 /** Select que também permite digitar um valor novo (ex: adicionar um setor ou uma escala que ainda não existe). */
 export function EditableSelect({ value, onChange, options, placeholder = "Novo valor" }) {
@@ -87,8 +87,11 @@ export function ShiftStrip({ colaboradorId, monthKey, plantoes, solicitacoes, at
     </div>
   );
 }
-export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestados, ferias, mesFiltro, setMesFiltro, equipeFiltro, setEquipeFiltro, equipesOptions, showEquipeSelector }) {
+
+/** Grade tipo planilha: colaboradores x dias do mês. */
+export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados, mesFiltro, setMesFiltro, equipeFiltro, setEquipeFiltro, equipesOptions, showEquipeSelector }) {
   const colaboradoresById = Object.fromEntries(colaboradores.map((c) => [c.id, c]));
+  const feriadosPorData = mapaFeriadosPorData(feriados);
   const lista = colaboradores.filter((c) => (!equipeFiltro || equipeFiltro === "Todas" ? true : c.equipe === equipeFiltro));
   const total = daysInMonth(mesFiltro);
   const dias = Array.from({ length: total }, (_, i) => i + 1);
@@ -113,6 +116,7 @@ export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestado
         <span className="item"><span className="sw" style={{ background: "#A32E42" }} />Folga normal (sindicato)</span>
         <span className="item"><span className="sw" style={{ background: "#E8972E" }} />Atestado</span>
         <span className="item"><span className="sw" style={{ background: "#8A8F98" }} />Férias</span>
+        <span className="item"><span className="sw" style={{ background: "#5B5F6B" }} />Feriado (sem plantão)</span>
       </div>
 
       <div className="cronograma-wrap">
@@ -127,9 +131,10 @@ export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestado
               {dias.map((d) => {
                 const dateStr = `${mesFiltro}-${String(d).padStart(2, "0")}`;
                 const isDomingo = new Date(dateStr + "T00:00:00").getDay() === 0;
+                const feriado = feriadosPorData[dateStr];
                 return (
-                  <th key={d} style={isDomingo ? { background: "#F0F3FA" } : undefined}>
-                    <div style={{ fontWeight: isDomingo ? 700 : 600, color: isDomingo ? "var(--primary-ink)" : "var(--text-muted)" }}>{d}</div>
+                  <th key={d} title={feriado ? `Feriado: ${feriado.nome}` : undefined} style={feriado ? { background: "#EEF0F3" } : isDomingo ? { background: "#F0F3FA" } : undefined}>
+                    <div style={{ fontWeight: isDomingo || feriado ? 700 : 600, color: feriado ? "#5B5F6B" : isDomingo ? "var(--primary-ink)" : "var(--text-muted)" }}>{d}</div>
                     <div style={{ fontWeight: 400, fontSize: 9 }}>{weekdayAbbrev(dateStr)}</div>
                   </th>
                 );
@@ -144,9 +149,10 @@ export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestado
                 {dias.map((day) => {
                   const dateStr = `${mesFiltro}-${String(day).padStart(2, "0")}`;
                   const isDomingo = new Date(dateStr + "T00:00:00").getDay() === 0;
-                  const ev = eventoDoDia(c.id, dateStr, plantoes, solicitacoes, atestados, ferias, colaboradoresById);
+                  const feriado = feriadosPorData[dateStr];
+                  const ev = eventoDoDia(c.id, dateStr, plantoes, solicitacoes, atestados, ferias, colaboradoresById, feriadosPorData);
                   return (
-                    <td key={day} title={ev ? `${formatBR(dateStr)} — ${ev.title}` : formatBR(dateStr)} style={isDomingo ? { background: "#FAFBFF" } : undefined}>
+                    <td key={day} title={ev ? `${formatBR(dateStr)} — ${ev.title}` : feriado ? `${formatBR(dateStr)} — Feriado: ${feriado.nome}` : formatBR(dateStr)} style={feriado ? { background: "#F7F8FA" } : isDomingo ? { background: "#FAFBFF" } : undefined}>
                       {ev && <span className="badge-cell" style={{ background: ev.bg, color: ev.fg }}>{ev.label}</span>}
                     </td>
                   );

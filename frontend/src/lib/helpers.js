@@ -45,14 +45,11 @@ export function timesOverlap(aStart, aEnd, bStart, bEnd) {
 
 export const TIPO_LABEL = { folga_plantao: "Folga de plantão", folga_sindicato: "Folga normal (sindicato)" };
 
-const TURNO_ABREV = { Manhã: "M", Tarde: "T", Noite: "N", Madrugada: "MD", Supervisor: "PS" };
-
 /** Determina o que mostrar numa célula do cronograma para um colaborador+dia. */
-export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, atestados, ferias, colaboradoresById) {
+export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, atestados, ferias, colaboradoresById, feriadosPorData) {
   const plantao = plantoes.find((p) => p.colaborador_id === colaboradorId && p.data === dateStr);
   if (plantao) {
-    const turno = colaboradoresById[colaboradorId]?.turno || "Manhã";
-    return { label: TURNO_ABREV[turno] || turno.slice(0, 2).toUpperCase(), bg: "#DCE8FB", fg: "#1E4FA0", title: `Plantão ${plantao.horario_inicio}–${plantao.horario_fim} (${plantao.tipo || ""})` };
+    return { label: "P", bg: "#DCE8FB", fg: "#1E4FA0", title: `Plantão ${plantao.horario_inicio}–${plantao.horario_fim} (${plantao.tipo || ""})` };
   }
   const feriasHit = ferias.find((f) => f.colaborador_id === colaboradorId && f.status === "aprovada" && rangeOverlapsDate(dateStr, f.data_inicio, f.data_fim));
   if (feriasHit) return { label: "FÉR", bg: "#E4E5E8", fg: "#4B4F58", title: "Férias" };
@@ -61,7 +58,17 @@ export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, ates
   if (folga) return { label: "f", bg: "#FBE3E5", fg: "#B23A4C", title: TIPO_LABEL[folga.tipo] };
   const atestado = atestados.find((a) => a.colaborador_id === colaboradorId && rangeOverlapsDate(dateStr, a.data_inicio, a.data_fim));
   if (atestado) return { label: "AT", bg: "#FCEEDC", fg: "#9A5F14", title: "Atestado" };
+  const feriado = feriadosPorData ? feriadosPorData[dateStr] : null;
+  if (feriado) return { label: "F", bg: "#EAECEF", fg: "#5B5F6B", title: `Feriado: ${feriado.nome} — sem plantão neste dia` };
   return null;
+}
+
+export function mapaFeriadosPorData(feriados) {
+  const mapa = {};
+  (feriados || []).forEach((f) => {
+    if (f.tipo === "obrigatorio" || f.trabalha) mapa[f.data] = f;
+  });
+  return mapa;
 }
 
 export const EQUIPES = ["Suporte N1", "Suporte N2", "Monitoramento", "Retenção"];

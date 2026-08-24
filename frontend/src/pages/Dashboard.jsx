@@ -3,7 +3,7 @@ import { TopBar, Pill, Spinner, ErrorBox } from "../components/UI";
 import { useApiList } from "../lib/hooks";
 import { currentMonthKey, monthLabel, formatBRDia, TIPO_LABEL } from "../lib/helpers";
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
   const [mes, setMes] = useState(currentMonthKey());
   const colaboradores = useApiList("/colaboradores");
   const plantoes = useApiList("/plantoes");
@@ -30,7 +30,14 @@ export default function Dashboard() {
               <div className="card stat"><span className="dot" style={{ background: "var(--plantao)" }} /><div className="num">{plantoesMes.length}</div><div className="label">Plantões no mês</div></div>
               <div className="card stat"><span className="dot" style={{ background: "var(--folga)" }} /><div className="num">{folgasMes.length}</div><div className="label">Folgas aprovadas</div></div>
               <div className="card stat"><span className="dot" style={{ background: "var(--atestado)" }} /><div className="num">{atestadosMes.length}</div><div className="label">Atestados no mês</div></div>
-              <div className="card stat"><span className="dot" style={{ background: "var(--pendente)" }} /><div className="num">{pendentes.length}</div><div className="label">Solicitações pendentes</div></div>
+              <button
+                className="card stat"
+                onClick={() => onNavigate && onNavigate("aprovacoes")}
+                style={{ textAlign: "left", cursor: onNavigate ? "pointer" : "default", border: "1px solid var(--border)", background: "var(--surface)", fontFamily: "inherit" }}
+                title="Ver solicitações pendentes"
+              >
+                <span className="dot" style={{ background: "var(--pendente)" }} /><div className="num">{pendentes.length}</div><div className="label">Solicitações pendentes {onNavigate && "→"}</div>
+              </button>
             </div>
 
             <div className="card" style={{ marginBottom: 16 }}>
