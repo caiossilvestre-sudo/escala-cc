@@ -9,15 +9,17 @@ export default function Dashboard({ onNavigate }) {
   const plantoes = useApiList("/plantoes");
   const solicitacoes = useApiList("/solicitacoes");
   const atestados = useApiList("/atestados");
+  const ferias = useApiList("/ferias");
 
-  const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading;
-  const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error;
+  const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading;
+  const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error;
 
   const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
   const plantoesMes = plantoes.data.filter((p) => p.data.slice(0, 7) === mes);
   const atestadosMes = atestados.data.filter((a) => a.data_inicio.slice(0, 7) === mes || a.data_fim.slice(0, 7) === mes);
   const folgasMes = solicitacoes.data.filter((s) => s.status === "aprovada" && s.data_solicitada.slice(0, 7) === mes);
   const pendentes = solicitacoes.data.filter((s) => s.status === "pendente");
+  const feriasPendentes = ferias.data.filter((f) => f.status === "solicitada" || f.status === "enviado_rh");
 
   return (
     <>
@@ -26,7 +28,7 @@ export default function Dashboard({ onNavigate }) {
         <ErrorBox error={error} />
         {loading ? <Spinner /> : (
           <>
-            <div className="grid-stats">
+            <div className="grid-stats" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
               <div className="card stat"><span className="dot" style={{ background: "var(--plantao)" }} /><div className="num">{plantoesMes.length}</div><div className="label">Plantões no mês</div></div>
               <div className="card stat"><span className="dot" style={{ background: "var(--folga)" }} /><div className="num">{folgasMes.length}</div><div className="label">Folgas aprovadas</div></div>
               <div className="card stat"><span className="dot" style={{ background: "var(--atestado)" }} /><div className="num">{atestadosMes.length}</div><div className="label">Atestados no mês</div></div>
@@ -34,9 +36,17 @@ export default function Dashboard({ onNavigate }) {
                 className="card stat"
                 onClick={() => onNavigate && onNavigate("aprovacoes")}
                 style={{ textAlign: "left", cursor: onNavigate ? "pointer" : "default", border: "1px solid var(--border)", background: "var(--surface)", fontFamily: "inherit" }}
-                title="Ver solicitações pendentes"
+                title="Ver solicitações de folga pendentes"
               >
-                <span className="dot" style={{ background: "var(--pendente)" }} /><div className="num">{pendentes.length}</div><div className="label">Solicitações pendentes {onNavigate && "→"}</div>
+                <span className="dot" style={{ background: "var(--pendente)" }} /><div className="num">{pendentes.length}</div><div className="label">Folgas pendentes {onNavigate && "→"}</div>
+              </button>
+              <button
+                className="card stat"
+                onClick={() => onNavigate && onNavigate("ferias")}
+                style={{ textAlign: "left", cursor: onNavigate ? "pointer" : "default", border: "1px solid var(--border)", background: "var(--surface)", fontFamily: "inherit" }}
+                title="Ver férias aguardando ação"
+              >
+                <span className="dot" style={{ background: "var(--ferias)" }} /><div className="num">{feriasPendentes.length}</div><div className="label">Férias aguardando ação {onNavigate && "→"}</div>
               </button>
             </div>
 

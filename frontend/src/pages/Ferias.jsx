@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
 import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
-import { todayISO, formatBR } from "../lib/helpers";
+import { todayISO, formatBR, addDays } from "../lib/helpers";
 
 const STAGES = ["solicitada", "enviado_rh", "aprovada"];
 const STAGE_LABEL = { solicitada: "Solicitado", enviado_rh: "Enviado ao RH", aprovada: "Retorno recebido" };
@@ -36,29 +36,37 @@ export function FeriasAdmin() {
               <div className="section-title">Em andamento ({abertas.length})</div>
               {abertas.length === 0 ? <div className="empty">Nenhuma solicitação em aberto.</div> : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {abertas.map((f) => (
-                    <div key={f.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                        <div><b>{nome(f.colaborador_id)}</b><div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{formatBR(f.data_inicio)} – {formatBR(f.data_fim)}</div></div>
-                        <Pill status={f.status}>{STAGE_LABEL[f.status]}</Pill>
+                  {abertas.map((f) => {
+                    const dias = Math.round((new Date(f.data_fim) - new Date(f.data_inicio)) / 86400000) + 1;
+                    return (
+                      <div key={f.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                          <div>
+                            <b>{nome(f.colaborador_id)}</b>
+                            <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                              {formatBR(f.data_inicio)} – {formatBR(f.data_fim)} ({dias} dias) · retorno em {formatBR(addDays(f.data_fim, 1))}
+                            </div>
+                          </div>
+                          <Pill status={f.status}>{STAGE_LABEL[f.status]}</Pill>
+                        </div>
+                        <textarea rows={2} placeholder="Observação (opcional)" defaultValue={f.nota_admin || ""} onChange={(e) => setNota({ ...nota, [f.id]: e.target.value })} style={{ width: "100%", marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, padding: 8, fontSize: 12.5, fontFamily: "inherit" }} />
+                        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                          {f.status === "solicitada" && (
+                            <>
+                              <button className="btn btn-primary btn-sm" onClick={() => avancar(f.id, "enviado_rh")}>Marcar como enviado ao RH</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => avancar(f.id, "rejeitada")}>Rejeitar já</button>
+                            </>
+                          )}
+                          {f.status === "enviado_rh" && (
+                            <>
+                              <button className="btn btn-success btn-sm" onClick={() => avancar(f.id, "aprovada")}>Aprovar e avisar colaborador</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => avancar(f.id, "ajustar")}>Retornar pedindo ajuste</button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <textarea rows={2} placeholder="Observação (opcional)" defaultValue={f.nota_admin || ""} onChange={(e) => setNota({ ...nota, [f.id]: e.target.value })} style={{ width: "100%", marginTop: 8, border: "1px solid var(--border)", borderRadius: 8, padding: 8, fontSize: 12.5, fontFamily: "inherit" }} />
-                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                        {f.status === "solicitada" && (
-                          <>
-                            <button className="btn btn-primary btn-sm" onClick={() => avancar(f.id, "enviado_rh")}>Marcar como enviado ao RH</button>
-                            <button className="btn btn-danger btn-sm" onClick={() => avancar(f.id, "rejeitada")}>Rejeitar já</button>
-                          </>
-                        )}
-                        {f.status === "enviado_rh" && (
-                          <>
-                            <button className="btn btn-success btn-sm" onClick={() => avancar(f.id, "aprovada")}>Aprovar e avisar colaborador</button>
-                            <button className="btn btn-danger btn-sm" onClick={() => avancar(f.id, "ajustar")}>Retornar pedindo ajuste</button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -87,12 +95,15 @@ export default function MinhasFerias({ user }) {
   const { data, loading, error, reload } = useApiList("/ferias");
   const { toast, showToast } = useToast();
   const [dataInicio, setDataInicio] = useState(todayISO());
-  const [dataFim, setDataFim] = useState(todayISO());
+  const [dias, setDias] = useState(30);
+
+  const dataFimCalculada = dias > 0 ? addDays(dataInicio, dias - 1) : dataInicio;
+  const dataRetorno = dias > 0 ? addDays(dataInicio, dias) : dataInicio;
 
   const enviar = async () => {
-    if (dataFim < dataInicio) { showToast("Data final não pode ser antes da inicial."); return; }
+    if (!dataInicio || !dias || dias < 1) { showToast("Informe a data de início e a quantidade de dias."); return; }
     try {
-      await api.post("/ferias", { data_inicio: dataInicio, data_fim: dataFim });
+      await api.post("/ferias", { data_inicio: dataInicio, data_fim: dataFimCalculada });
       showToast("Solicitação de férias enviada.");
       reload();
     } catch (e) { showToast(e.message); }
@@ -109,8 +120,11 @@ export default function MinhasFerias({ user }) {
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="section-title">Nova solicitação</div>
           <div className="form-grid">
-            <div className="field"><label>Início</label><input type="date" value={dataInicio} onChange={(e) => { setDataInicio(e.target.value); if (dataFim < e.target.value) setDataFim(e.target.value); }} /></div>
-            <div className="field"><label>Fim</label><input type="date" value={dataFim} min={dataInicio} onChange={(e) => setDataFim(e.target.value)} /></div>
+            <div className="field"><label>Data de início</label><input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} /></div>
+            <div className="field"><label>Quantidade de dias</label><input type="number" min="1" max="90" value={dias} onChange={(e) => setDias(Number(e.target.value))} /></div>
+          </div>
+          <div className="info-box">
+            Período: <b>{formatBR(dataInicio)}</b> até <b>{formatBR(dataFimCalculada)}</b> ({dias} dias) — retorno ao trabalho em <b>{formatBR(dataRetorno)}</b>.
           </div>
           <button className="btn btn-primary" onClick={enviar}>Solicitar férias</button>
         </div>
