@@ -71,7 +71,7 @@ export function mapaFeriadosPorData(feriados) {
   return mapa;
 }
 
-export const EQUIPES = ["Suporte N1", "Suporte N2", "Monitoramento", "Retenção"];
+export const EQUIPES = ["Suporte N1", "Suporte N2", "Monitoramento"];
 export const ESCALAS = ["6x2", "5x2", "12x36", "4x2"];
 export const TURNOS = ["Manhã", "Tarde", "Noite", "Madrugada", "Supervisor"];
 

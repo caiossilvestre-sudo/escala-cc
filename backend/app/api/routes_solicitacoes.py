@@ -3,7 +3,7 @@ from datetime import datetime, date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_colaborador, log_action, require_admin
+from app.core.deps import check_escopo_equipe, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Colaborador, Plantao, SolicitacaoFolga
 from app.db.session import get_db
 from app.logic import horarios_similares
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/solicitacoes", tags=["solicitacoes"])
 @router.get("", response_model=list[SolicitacaoOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(SolicitacaoFolga)
-    if user.role == "colaborador":
+    if user.role in ("colaborador", "supervisor"):
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
         q = q.filter(SolicitacaoFolga.colaborador_id.in_(colegas_ids))
     return q.order_by(SolicitacaoFolga.data_solicitada.desc()).all()
@@ -73,12 +73,15 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
 
 
 @router.post("/{solicitacao_id}/reabrir", response_model=SolicitacaoOut)
-def reabrir(solicitacao_id: str, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def reabrir(solicitacao_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
     """Volta uma solicitação já aprovada/rejeitada para 'pendente', pra permitir
     corrigir uma decisão (ex: aprovou por engano, precisa cancelar)."""
     alvo = db.get(SolicitacaoFolga, solicitacao_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação não encontrada.")
+    dono = db.get(Colaborador, alvo.colaborador_id)
+    if dono:
+        check_escopo_equipe(user, dono.equipe)
     if alvo.status == "pendente":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Essa solicitação já está pendente.")
     alvo.status = "pendente"
@@ -86,15 +89,18 @@ def reabrir(solicitacao_id: str, request: Request, db: Session = Depends(get_db)
     alvo.resolved_by = None
     alvo.resolved_at = None
     db.commit()
-    log_action(db, request, admin, "reabrir_folga", "solicitacao_folga", alvo.id)
+    log_action(db, request, user, "reabrir_folga", "solicitacao_folga", alvo.id)
     return alvo
 
 
 @router.post("/{solicitacao_id}/resolver", response_model=SolicitacaoOut)
-def resolver(solicitacao_id: str, body: ResolverSolicitacaoIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def resolver(solicitacao_id: str, body: ResolverSolicitacaoIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
     alvo = db.get(SolicitacaoFolga, solicitacao_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação não encontrada.")
+    dono = db.get(Colaborador, alvo.colaborador_id)
+    if dono:
+        check_escopo_equipe(user, dono.equipe)
     if alvo.status != "pendente":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Essa solicitação já foi resolvida.")
 
@@ -103,8 +109,8 @@ def resolver(solicitacao_id: str, body: ResolverSolicitacaoIn, request: Request,
 
     alvo.status = "aprovada" if body.aprovar else "rejeitada"
     alvo.motivo_rejeicao = body.motivo_rejeicao if not body.aprovar else None
-    alvo.resolved_by = admin.id
+    alvo.resolved_by = user.id
     alvo.resolved_at = datetime.utcnow()
     db.commit()
-    log_action(db, request, admin, "resolver_folga", "solicitacao_folga", alvo.id, {"aprovado": body.aprovar})
+    log_action(db, request, user, "resolver_folga", "solicitacao_folga", alvo.id, {"aprovado": body.aprovar})
     return alvo

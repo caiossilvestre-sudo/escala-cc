@@ -8,7 +8,7 @@ from app.core.security import hash_password
 from app.db.models import Colaborador, HistoricoEquipe, Plantao, SolicitacaoFolga, Ferias
 from app.db.session import get_db
 from app.schemas import (
-    ColaboradorIn, ColaboradorOut, ColaboradorUpdateIn, DesligarIn, HistoricoEquipeOut,
+    ColaboradorIn, ColaboradorOut, ColaboradorUpdateIn, DesligarIn, HistoricoEquipeOut, ResetarSenhaIn,
 )
 
 router = APIRouter(prefix="/colaboradores", tags=["colaboradores"])
@@ -19,6 +19,8 @@ def listar(incluir_inativos: bool = False, db: Session = Depends(get_db), user: 
     q = db.query(Colaborador)
     if not incluir_inativos:
         q = q.filter(Colaborador.status == "ativo")
+    if user.role == "supervisor":
+        q = q.filter(Colaborador.equipe == user.equipe)
     return q.all()
 
 
@@ -90,6 +92,37 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
     db.commit()
     db.refresh(alvo)
     log_action(db, request, admin, "atualizar_colaborador", "colaborador", alvo.id, {"motivo": body.motivo, "role": body.role})
+    return alvo
+
+
+@router.post("/{colaborador_id}/resetar-senha", response_model=ColaboradorOut)
+def resetar_senha(colaborador_id: str, body: ResetarSenhaIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+    """Define uma nova senha provisória pro colaborador (ele precisa trocar no
+    próximo login) e já libera qualquer bloqueio por tentativas erradas."""
+    alvo = db.get(Colaborador, colaborador_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    alvo.password_hash = hash_password(body.nova_senha)
+    alvo.must_change_password = True
+    alvo.failed_attempts = 0
+    alvo.locked_until = None
+    db.commit()
+    db.refresh(alvo)
+    log_action(db, request, admin, "resetar_senha", "colaborador", alvo.id)
+    return alvo
+
+
+@router.post("/{colaborador_id}/desbloquear", response_model=ColaboradorOut)
+def desbloquear(colaborador_id: str, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+    """Libera o bloqueio por tentativas de login erradas, sem mexer na senha."""
+    alvo = db.get(Colaborador, colaborador_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    alvo.failed_attempts = 0
+    alvo.locked_until = None
+    db.commit()
+    db.refresh(alvo)
+    log_action(db, request, admin, "desbloquear_colaborador", "colaborador", alvo.id)
     return alvo
 
 

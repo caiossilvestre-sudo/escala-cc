@@ -35,12 +35,20 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
       {form.role === "admin" && (
         <div className="info-box">Setor/turno/escala aqui são só dados de perfil — um administrador enxerga e gerencia todos os setores normalmente, isso não limita o acesso dele a nada.</div>
       )}
+      {form.role === "visualizador" && (
+        <div className="info-box">Perfil "Visualizador": enxerga todas as telas de administração (colaboradores, plantões, aprovações etc.), mas não consegue cadastrar, editar, aprovar ou excluir nada — acesso só de leitura.</div>
+      )}
+      {form.role === "supervisor" && (
+        <div className="info-box">Perfil "Supervisor": consegue cadastrar plantões, aprovar folgas/férias e registrar atestados — mas só de colaboradores do mesmo setor ({form.equipe || "escolha o setor abaixo"}). Não gerencia contas de colaborador (cadastro, desligamento) nem feriados — isso continua exclusivo do administrador.</div>
+      )}
       <div className="form-grid">
         <div className="field"><label>Nome</label><input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome completo" /></div>
         <div className="field"><label>E-mail (login)</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="pessoa@empresa.com" /></div>
         <div className="field"><label>Perfil</label>
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="colaborador">Colaborador</option>
+            <option value="supervisor">Supervisor (edita só o próprio setor)</option>
+            <option value="visualizador">Visualizador (só leitura)</option>
             <option value="admin">Administrador</option>
           </select>
         </div>
@@ -82,6 +90,8 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
         <div className="field"><label>Perfil</label>
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="colaborador">Colaborador</option>
+            <option value="supervisor">Supervisor (edita só o próprio setor)</option>
+            <option value="visualizador">Visualizador (só leitura)</option>
             <option value="admin">Administrador</option>
           </select>
         </div>
@@ -91,7 +101,7 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
         <div className="field"><label>Início</label><input type="time" value={form.horario_inicio} onChange={(e) => setForm({ ...form, horario_inicio: e.target.value })} /></div>
         <div className="field"><label>Fim</label><input type="time" value={form.horario_fim} onChange={(e) => setForm({ ...form, horario_fim: e.target.value })} /></div>
       </div>
-      <div className="field" style={{ marginBottom: 10 }}><label>Motivo da alteração (obrigatório)</label><input value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} placeholder="ex: promovido a administrador / reforço de N2 por demanda" /></div>
+      <div className="field" style={{ marginBottom: 10 }}><label>Motivo da alteração (obrigatório)</label><input value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} placeholder="ex: promovido a administrador / vira visualizador do RH" /></div>
       <div style={{ display: "flex", gap: 6 }}>
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={submit}>Salvar alterações</button>
         <button className="btn btn-ghost btn-sm" onClick={onDone}>Cancelar</button>
@@ -148,22 +158,64 @@ function DesligarRow({ colaborador, onDone, showToast }) {
   );
 }
 
+function ResetarSenhaRow({ colaborador, onDone, showToast }) {
+  const [novaSenha, setNovaSenha] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (novaSenha.length < 10) { showToast("A senha precisa ter pelo menos 10 caracteres."); return; }
+    setBusy(true);
+    try {
+      await api.post(`/colaboradores/${colaborador.id}/resetar-senha`, { nova_senha: novaSenha });
+      showToast("Senha redefinida — o colaborador vai precisar trocá-la no próximo login.");
+      onDone();
+    } catch (e) {
+      showToast(e.message || "Erro ao redefinir senha.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ marginTop: 8, padding: 10, background: "#FAFBFC", borderRadius: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="field" style={{ flex: 1, minWidth: 200 }}><label>Nova senha provisória</label><input type="text" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="mín. 10 caracteres" /></div>
+        <button className="btn btn-primary btn-sm" disabled={busy} onClick={submit}>Redefinir senha</button>
+        <button className="btn btn-ghost btn-sm" onClick={onDone}>Cancelar</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>Isso também libera automaticamente qualquer bloqueio por tentativas erradas.</div>
+    </div>
+  );
+}
+
 export default function Colaboradores() {
   const [incluirInativos, setIncluirInativos] = useState(false);
   const { data, loading, error, reload } = useApiList(`/colaboradores${incluirInativos ? "?incluir_inativos=true" : ""}`, [incluirInativos]);
   const { toast, showToast } = useToast();
   const [editandoId, setEditandoId] = useState(null);
   const [desligandoId, setDesligandoId] = useState(null);
+  const [resetandoId, setResetandoId] = useState(null);
 
-  // Setores/turnos/escalas disponíveis = os padrões + qualquer valor customizado já usado por alguém.
-  const equipeOptions = Array.from(new Set([...EQUIPES, ...data.map((c) => c.equipe)])).filter(Boolean);
-  const turnoOptions = Array.from(new Set([...TURNOS, ...data.map((c) => c.turno)])).filter(Boolean);
-  const escalaOptions = Array.from(new Set([...ESCALAS, ...data.map((c) => c.escala_tipo)])).filter(Boolean);
+  // Só mostra setor/turno/escala que alguém realmente está usando agora —
+  // assim que ninguém mais usa um valor, ele some sozinho da lista.
+  const equipeOptions = Array.from(new Set(data.map((c) => c.equipe))).filter(Boolean);
+  const turnoOptions = Array.from(new Set(data.map((c) => c.turno))).filter(Boolean);
+  const escalaOptions = Array.from(new Set(data.map((c) => c.escala_tipo))).filter(Boolean);
+
+  const ROLE_PILL_LABEL = { admin: "Admin", visualizador: "Visualizador", supervisor: "Supervisor" };
+
+  const estaBloqueado = (c) => c.locked_until && new Date(c.locked_until + "Z") > new Date();
 
   const reativar = async (id) => {
     try {
       await api.post(`/colaboradores/${id}/reativar`);
       showToast("Colaborador reativado.");
+      reload();
+    } catch (e) { showToast(e.message); }
+  };
+
+  const desbloquear = async (id) => {
+    try {
+      await api.post(`/colaboradores/${id}/desbloquear`);
+      showToast("Conta desbloqueada.");
       reload();
     } catch (e) { showToast(e.message); }
   };
@@ -193,11 +245,14 @@ export default function Colaboradores() {
                         <Pill status="plantao">{c.equipe}</Pill><Pill status="plantao">{c.turno}</Pill>
                         <span className="mono" style={{ color: "var(--text-muted)" }}>{c.escala_tipo} · {c.horario_inicio}–{c.horario_fim}</span>
                         {c.status === "inativo" && <Pill status="rejeitada">Desligado{c.data_desligamento ? ` em ${c.data_desligamento}` : ""}</Pill>}
-                        {c.role === "admin" && <Pill status="aprovada">Admin</Pill>}
+                        {estaBloqueado(c) && <Pill status="rejeitada">🔒 Bloqueado até {new Date(c.locked_until + "Z").toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</Pill>}
+                        {(c.role === "admin" || c.role === "visualizador" || c.role === "supervisor") && <Pill status="aprovada">{ROLE_PILL_LABEL[c.role]}</Pill>}
                       </div>
                     </div>
                     {c.status === "ativo" ? (
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {estaBloqueado(c) && <button className="btn btn-success btn-sm" onClick={() => desbloquear(c.id)}>Desbloquear</button>}
+                        <button className="btn btn-ghost btn-sm" onClick={() => setResetandoId(resetandoId === c.id ? null : c.id)}>Redefinir senha</button>
                         <button className="btn btn-ghost btn-sm" onClick={() => setEditandoId(editandoId === c.id ? null : c.id)}>Editar</button>
                         <button className="btn btn-danger btn-sm" onClick={() => setDesligandoId(desligandoId === c.id ? null : c.id)}>Desligar</button>
                       </div>
@@ -205,6 +260,7 @@ export default function Colaboradores() {
                       <button className="btn btn-success btn-sm" onClick={() => reativar(c.id)}>Reativar</button>
                     )}
                   </div>
+                  {resetandoId === c.id && <ResetarSenhaRow colaborador={c} showToast={showToast} onDone={() => { setResetandoId(null); reload(); }} />}
                   {editandoId === c.id && (
                     <EditarColaboradorRow colaborador={c} showToast={showToast} equipeOptions={equipeOptions} escalaOptions={escalaOptions} turnoOptions={turnoOptions}
                       onDone={() => { setEditandoId(null); reload(); }} />

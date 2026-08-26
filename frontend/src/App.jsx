@@ -28,6 +28,17 @@ const NAV_ADMIN = [
   { id: "avisos", label: "Avisos" },
   { id: "senha", label: "Trocar senha" },
 ];
+// Supervisor: só o operacional do próprio setor. Sem Colaboradores (contas),
+// sem Feriados (política da empresa inteira) e sem Avisos (rotina global).
+const NAV_SUPERVISOR = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "cronograma", label: "Cronograma" },
+  { id: "plantoes", label: "Plantões" },
+  { id: "aprovacoes", label: "Aprovações" },
+  { id: "ferias", label: "Férias" },
+  { id: "atestados", label: "Atestados" },
+  { id: "senha", label: "Trocar senha" },
+];
 const NAV_COLAB = [
   { id: "meus-plantoes", label: "Meus plantões" },
   { id: "cronograma-equipe", label: "Cronograma do setor" },
@@ -38,19 +49,26 @@ const NAV_COLAB = [
   { id: "senha", label: "Trocar senha" },
 ];
 
+const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador" };
+
 function Shell() {
   const { user, loading, logout } = useAuth();
   const [tab, setTab] = useState(null);
 
   const isAdmin = user?.role === "admin";
+  const isViewer = user?.role === "visualizador";
+  const isSupervisor = user?.role === "supervisor";
+  // Visualizador enxerga as mesmas telas do admin — só não consegue submeter nada.
+  const showAdminPages = isAdmin || isViewer;
+
   useEffect(() => { setTab(null); }, [user?.role]);
   useIdleLogout(logout, 15 * 60 * 1000, !!user);
 
   if (loading) return null;
   if (!user) return <Login />;
 
-  const nav = isAdmin ? NAV_ADMIN : NAV_COLAB;
-  const activeTab = tab || (isAdmin ? "dashboard" : "meus-plantoes");
+  const nav = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
+  const activeTab = tab || (showAdminPages || isSupervisor ? "dashboard" : "meus-plantoes");
 
   return (
     <div className="app-shell">
@@ -61,7 +79,7 @@ function Shell() {
         </div>
         <div className="sidebar-user">
           <div className="name">{user.nome}</div>
-          <div className="role">{isAdmin ? "Administrador" : "Colaborador"}{user.equipe ? ` · ${user.equipe}` : ""}</div>
+          <div className="role">{ROLE_LABEL[user.role] || user.role}{user.equipe ? ` · ${user.equipe}` : ""}</div>
           <button onClick={logout}>Sair</button>
         </div>
         <nav className="nav">
@@ -70,24 +88,41 @@ function Shell() {
           ))}
         </nav>
         <div className="nav-footnote">
-          {isAdmin ? "Você cadastra pessoas, plantões, aprova folgas, férias e atestados." : "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
+          {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
+          {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
+          {isSupervisor && "Você cadastra plantões, aprova folgas, férias e atestados — só do seu próprio setor."}
+          {!isAdmin && !isViewer && !isSupervisor && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
         </div>
       </aside>
 
       <main className="main">
-        {activeTab === "dashboard" && isAdmin && <Dashboard onNavigate={setTab} />}
-        {activeTab === "cronograma" && isAdmin && <CronogramaAdmin />}
-        {activeTab === "colaboradores" && isAdmin && <Colaboradores />}
-        {activeTab === "plantoes" && isAdmin && <Plantoes />}
-        {activeTab === "feriados" && isAdmin && <Feriados />}
-        {activeTab === "aprovacoes" && isAdmin && <Aprovacoes />}
-        {activeTab === "ferias" && (isAdmin ? <FeriasAdmin /> : <MinhasFerias user={user} />)}
-        {activeTab === "atestados" && (isAdmin ? <AtestadosAdmin /> : <MeusAtestados user={user} />)}
-        {activeTab === "avisos" && (isAdmin ? <AvisosAdmin /> : <PainelAvisos />)}
-        {activeTab === "meus-plantoes" && !isAdmin && <MeusPlantoes user={user} />}
-        {activeTab === "cronograma-equipe" && !isAdmin && <CronogramaEquipe user={user} />}
-        {activeTab === "solicitar-folga" && !isAdmin && <SolicitarFolga user={user} />}
-        {activeTab === "senha" && <ChangePassword />}
+        {isViewer && (
+          <div style={{ background: "#EEF0F3", borderBottom: "1px solid var(--border)", padding: "8px 26px", fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+            👁️ Modo somente leitura — você pode ver tudo, mas os campos e botões de ação estão desabilitados.
+          </div>
+        )}
+        {isSupervisor && (
+          <div style={{ background: "#F0F4FF", borderBottom: "1px solid #DCE1FB", padding: "8px 26px", fontSize: 12, color: "#2A4FA0", display: "flex", alignItems: "center", gap: 6 }}>
+            🧭 Acesso de supervisor — as ações valem só para o setor {user.equipe}.
+          </div>
+        )}
+        {/* fieldset desabilita todo input/select/textarea/button descendente de uma vez,
+            sem precisar mexer em cada tela individualmente — só pro visualizador. */}
+        <fieldset disabled={isViewer} style={{ border: "none", margin: 0, padding: 0 }}>
+          {activeTab === "dashboard" && (showAdminPages || isSupervisor) && <Dashboard onNavigate={setTab} />}
+          {activeTab === "cronograma" && (showAdminPages || isSupervisor) && <CronogramaAdmin />}
+          {activeTab === "colaboradores" && showAdminPages && <Colaboradores />}
+          {activeTab === "plantoes" && (showAdminPages || isSupervisor) && <Plantoes />}
+          {activeTab === "feriados" && showAdminPages && <Feriados />}
+          {activeTab === "aprovacoes" && (showAdminPages || isSupervisor) && <Aprovacoes />}
+          {activeTab === "ferias" && ((showAdminPages || isSupervisor) ? <FeriasAdmin /> : <MinhasFerias user={user} />)}
+          {activeTab === "atestados" && ((showAdminPages || isSupervisor) ? <AtestadosAdmin /> : <MeusAtestados user={user} />)}
+          {activeTab === "avisos" && (showAdminPages ? <AvisosAdmin /> : <PainelAvisos />)}
+          {activeTab === "meus-plantoes" && !showAdminPages && !isSupervisor && <MeusPlantoes user={user} />}
+          {activeTab === "cronograma-equipe" && !showAdminPages && !isSupervisor && <CronogramaEquipe user={user} />}
+          {activeTab === "solicitar-folga" && !showAdminPages && !isSupervisor && <SolicitarFolga user={user} />}
+          {activeTab === "senha" && <ChangePassword />}
+        </fieldset>
       </main>
     </div>
   );

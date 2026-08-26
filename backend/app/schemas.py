@@ -34,8 +34,8 @@ class TokenOut(BaseModel):
 # --------------------------------------------------------- colaborador ----
 
 # "visualizador" enxerga tudo (igual admin), mas nenhuma rota de escrita
-# aceita esse papel — só "admin" passa pelo require_admin.
-RoleType = Literal["admin", "colaborador", "visualizador"]
+# aceita esse papel. "supervisor" edita, mas só dentro do próprio setor.
+RoleType = Literal["admin", "colaborador", "visualizador", "supervisor"]
 
 
 class ColaboradorIn(BaseModel):
@@ -62,8 +62,14 @@ class ColaboradorOut(BaseModel):
     horario_fim: str
     status: str
     data_desligamento: Optional[date] = None
+    locked_until: Optional[datetime] = None
+    failed_attempts: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ResetarSenhaIn(BaseModel):
+    nova_senha: str = Field(min_length=10, max_length=200)
 
 
 class ColaboradorUpdateIn(BaseModel):

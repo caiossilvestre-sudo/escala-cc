@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoDia, mapaFeriadosPorData } from "../lib/helpers";
 
 /** Select que também permite digitar um valor novo (ex: adicionar um setor ou uma escala que ainda não existe). */
 export function EditableSelect({ value, onChange, options, placeholder = "Novo valor" }) {
   const [customMode, setCustomMode] = useState(!options.includes(value) && !!value);
+  // Reavalia quando as opções terminam de carregar (evitam ficar "preso" em
+  // modo texto livre se o valor já existir na lista, só chegou depois).
+  useEffect(() => {
+    if (options.includes(value)) setCustomMode(false);
+  }, [options, value]);
   if (customMode) {
     return (
       <div style={{ display: "flex", gap: 4 }}>

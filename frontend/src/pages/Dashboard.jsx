@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox } from "../components/UI";
 import { useApiList } from "../lib/hooks";
-import { currentMonthKey, monthLabel, formatBRDia, todayISO, rangeOverlapsDate, TIPO_LABEL } from "../lib/helpers";
+import { currentMonthKey, monthLabel, formatBR, formatBRDia, todayISO, addDays, rangeOverlapsDate, TIPO_LABEL } from "../lib/helpers";
 
 function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados }) {
   const hoje = todayISO();
@@ -61,6 +61,7 @@ function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, f
 
 export default function Dashboard({ onNavigate }) {
   const [mes, setMes] = useState(currentMonthKey());
+  const [equipeFiltro, setEquipeFiltro] = useState("Todas");
   const colaboradores = useApiList("/colaboradores");
   const plantoes = useApiList("/plantoes");
   const solicitacoes = useApiList("/solicitacoes");
@@ -71,16 +72,40 @@ export default function Dashboard({ onNavigate }) {
   const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading || feriados.loading;
   const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error || feriados.error;
 
-  const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
-  const plantoesMes = plantoes.data.filter((p) => p.data.slice(0, 7) === mes);
-  const atestadosMes = atestados.data.filter((a) => a.data_inicio.slice(0, 7) === mes || a.data_fim.slice(0, 7) === mes);
-  const folgasMes = solicitacoes.data.filter((s) => s.status === "aprovada" && s.data_solicitada.slice(0, 7) === mes);
-  const pendentes = solicitacoes.data.filter((s) => s.status === "pendente");
-  const feriasPendentes = ferias.data.filter((f) => f.status === "solicitada" || f.status === "enviado_rh");
+  const equipesDisponiveis = Array.from(new Set(colaboradores.data.map((c) => c.equipe))).filter(Boolean);
+  const colaboradorPorId = Object.fromEntries(colaboradores.data.map((c) => [c.id, c]));
+  const nome = (id) => colaboradorPorId[id]?.nome || "—";
+  const equipeDe = (id) => colaboradorPorId[id]?.equipe || "—";
+  const noFiltro = (colaboradorId) => equipeFiltro === "Todas" || equipeDe(colaboradorId) === equipeFiltro;
+
+  const colaboradoresFiltrados = equipeFiltro === "Todas" ? colaboradores.data : colaboradores.data.filter((c) => c.equipe === equipeFiltro);
+  const plantoesMes = plantoes.data.filter((p) => p.data.slice(0, 7) === mes && noFiltro(p.colaborador_id));
+  const atestadosMes = atestados.data.filter((a) => (a.data_inicio.slice(0, 7) === mes || a.data_fim.slice(0, 7) === mes) && noFiltro(a.colaborador_id));
+  const folgasMes = solicitacoes.data.filter((s) => s.status === "aprovada" && s.data_solicitada.slice(0, 7) === mes && noFiltro(s.colaborador_id));
+  const pendentes = solicitacoes.data.filter((s) => s.status === "pendente" && noFiltro(s.colaborador_id));
+  const feriasPendentes = ferias.data.filter((f) => (f.status === "solicitada" || f.status === "enviado_rh") && noFiltro(f.colaborador_id));
+
+  const hoje = todayISO();
+  const statusFolgaDoPlantao = (p) => {
+    const solicitacao = solicitacoes.data.find((s) => s.plantao_id === p.id && s.status !== "rejeitada");
+    if (solicitacao) return { label: solicitacao.status === "aprovada" ? "Folga aprovada" : "Folga pendente", cor: "aprovada" };
+    const prazo = addDays(p.data, 6);
+    if (hoje > prazo) return { label: "Atrasado — sem folga", cor: "rejeitada" };
+    return { label: `Agendar até ${formatBR(prazo)}`, cor: "pendente" };
+  };
 
   return (
     <>
-      <TopBar title="Dashboard" subtitle={`Visão geral de ${monthLabel(mes)}`} right={<input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="mono" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />} />
+      <TopBar title="Dashboard" subtitle={`Visão geral de ${monthLabel(mes)}`}
+        right={
+          <div style={{ display: "flex", gap: 8 }}>
+            <select value={equipeFiltro} onChange={(e) => setEquipeFiltro(e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}>
+              <option value="Todas">Todos os setores</option>
+              {equipesDisponiveis.map((e) => <option key={e}>{e}</option>)}
+            </select>
+            <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="mono" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+          </div>
+        } />
       <div className="content">
         <ErrorBox error={error} />
         {loading ? <Spinner /> : (
@@ -107,16 +132,24 @@ export default function Dashboard({ onNavigate }) {
               </button>
             </div>
 
-            <EmExpedienteAgora colaboradores={colaboradores.data} plantoes={plantoes.data} solicitacoes={solicitacoes.data} atestados={atestados.data} ferias={ferias.data} feriados={feriados.data} />
+            <EmExpedienteAgora colaboradores={colaboradoresFiltrados} plantoes={plantoes.data} solicitacoes={solicitacoes.data} atestados={atestados.data} ferias={ferias.data} feriados={feriados.data} />
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="section-title">Plantões do mês</div>
               {plantoesMes.length === 0 ? <div className="empty">Nenhum plantão cadastrado neste mês.</div> : (
                 <table className="tbl">
-                  <thead><tr><th>Colaborador</th><th>Data</th><th>Horário</th><th>Tipo</th></tr></thead>
-                  <tbody>{[...plantoesMes].sort((a, b) => a.data.localeCompare(b.data)).map((p) => (
-                    <tr key={p.id}><td>{nome(p.colaborador_id)}</td><td className="mono">{formatBRDia(p.data)}</td><td className="mono">{p.horario_inicio}–{p.horario_fim}</td><td>{p.tipo}</td></tr>
-                  ))}</tbody>
+                  <thead><tr><th>Colaborador</th><th>Setor</th><th>Data</th><th>Horário</th><th>Tipo</th><th>Folga do plantão</th></tr></thead>
+                  <tbody>{[...plantoesMes].sort((a, b) => a.data.localeCompare(b.data)).map((p) => {
+                    const st = statusFolgaDoPlantao(p);
+                    return (
+                      <tr key={p.id}>
+                        <td>{nome(p.colaborador_id)}</td>
+                        <td><Pill status="plantao">{equipeDe(p.colaborador_id)}</Pill></td>
+                        <td className="mono">{formatBRDia(p.data)}</td><td className="mono">{p.horario_inicio}–{p.horario_fim}</td><td>{p.tipo}</td>
+                        <td><Pill status={st.cor}>{st.label}</Pill></td>
+                      </tr>
+                    );
+                  })}</tbody>
                 </table>
               )}
             </div>
@@ -126,9 +159,9 @@ export default function Dashboard({ onNavigate }) {
                 <div className="section-title">Folgas aprovadas</div>
                 {folgasMes.length === 0 ? <div className="empty">Nenhuma folga aprovada no período.</div> : (
                   <table className="tbl">
-                    <thead><tr><th>Colaborador</th><th>Data</th><th>Tipo</th></tr></thead>
+                    <thead><tr><th>Colaborador</th><th>Setor</th><th>Data</th><th>Tipo</th></tr></thead>
                     <tbody>{folgasMes.map((s) => (
-                      <tr key={s.id}><td>{nome(s.colaborador_id)}</td><td className="mono">{formatBRDia(s.data_solicitada)}</td><td><Pill status={s.tipo === "folga_sindicato" ? "sindicato" : "aprovada"}>{TIPO_LABEL[s.tipo]}</Pill></td></tr>
+                      <tr key={s.id}><td>{nome(s.colaborador_id)}</td><td><Pill status="plantao">{equipeDe(s.colaborador_id)}</Pill></td><td className="mono">{formatBRDia(s.data_solicitada)}</td><td><Pill status={s.tipo === "folga_sindicato" ? "sindicato" : "aprovada"}>{TIPO_LABEL[s.tipo]}</Pill></td></tr>
                     ))}</tbody>
                   </table>
                 )}

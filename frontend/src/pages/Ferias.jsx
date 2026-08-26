@@ -25,6 +25,15 @@ export function FeriasAdmin() {
     } catch (e) { showToast(e.message); }
   };
 
+  const remover = async (id) => {
+    if (!window.confirm("Excluir esta solicitação de férias? Essa ação não pode ser desfeita.")) return;
+    try {
+      await api.delete(`/ferias/${id}`);
+      showToast("Solicitação de férias excluída.");
+      reload();
+    } catch (e) { showToast(e.message || "Erro ao excluir."); }
+  };
+
   return (
     <>
       <TopBar title="Férias" subtitle="Fluxo em 3 etapas: solicitação → envio ao RH → retorno ao colaborador" />
@@ -63,6 +72,7 @@ export function FeriasAdmin() {
                               <button className="btn btn-danger btn-sm" onClick={() => avancar(f.id, "ajustar")}>Retornar pedindo ajuste</button>
                             </>
                           )}
+                          <button className="btn btn-ghost btn-sm" onClick={() => remover(f.id)}>Excluir</button>
                         </div>
                       </div>
                     );
@@ -74,11 +84,12 @@ export function FeriasAdmin() {
               <div className="section-title">Concluídas</div>
               {concluidas.length === 0 ? <div className="empty">Sem histórico ainda.</div> : (
                 <table className="tbl">
-                  <thead><tr><th>Colaborador</th><th>Período</th><th>Status</th><th>Observação</th></tr></thead>
+                  <thead><tr><th>Colaborador</th><th>Período</th><th>Status</th><th>Observação</th><th></th></tr></thead>
                   <tbody>{concluidas.map((f) => (
                     <tr key={f.id}><td>{nome(f.colaborador_id)}</td><td className="mono">{formatBR(f.data_inicio)}–{formatBR(f.data_fim)}</td>
                       <td><Pill status={f.status === "aprovada" ? "aprovada" : f.status === "ajustar" ? "ajustar" : "rejeitada"}>{f.status === "aprovada" ? "Aprovada" : f.status === "ajustar" ? "Ajuste solicitado" : "Rejeitada"}</Pill></td>
-                      <td style={{ color: "var(--text-muted)" }}>{f.nota_admin || "—"}</td></tr>
+                      <td style={{ color: "var(--text-muted)" }}>{f.nota_admin || "—"}</td>
+                      <td><button className="btn btn-ghost btn-sm" onClick={() => remover(f.id)}>Excluir</button></td></tr>
                   ))}</tbody>
                 </table>
               )}
