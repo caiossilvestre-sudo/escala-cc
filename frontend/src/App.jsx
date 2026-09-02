@@ -18,37 +18,46 @@ import SolicitarFolga from "./pages/SolicitarFolga";
 import ChangePassword from "./pages/ChangePassword";
 
 const NAV_ADMIN = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "cronograma", label: "Cronograma" },
-  { id: "colaboradores", label: "Colaboradores" },
-  { id: "plantoes", label: "Plantões" },
-  { id: "feriados", label: "Feriados" },
-  { id: "aprovacoes", label: "Aprovações" },
-  { id: "ferias", label: "Férias" },
-  { id: "atestados", label: "Atestados" },
-  { id: "avisos", label: "Avisos" },
-  { id: "senha", label: "Trocar senha" },
+  { grupo: "Visão geral", itens: [{ id: "dashboard", label: "Dashboard" }] },
+  { grupo: "Operação", itens: [
+    { id: "cronograma", label: "Cronograma" },
+    { id: "plantoes", label: "Plantões" },
+    { id: "feriados", label: "Feriados" },
+  ] },
+  { grupo: "Solicitações", itens: [
+    { id: "aprovacoes", label: "Aprovações" },
+    { id: "ferias", label: "Férias" },
+    { id: "atestados", label: "Atestados" },
+  ] },
+  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
+  { grupo: "Comunicação", itens: [{ id: "avisos", label: "Avisos" }] },
 ];
 // Supervisor: só o operacional do próprio setor. Sem Feriados (política da
 // empresa inteira) e sem a aba de Avisos administrativa (rotina global).
 const NAV_SUPERVISOR = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "cronograma", label: "Cronograma" },
-  { id: "colaboradores", label: "Colaboradores" },
-  { id: "plantoes", label: "Plantões" },
-  { id: "aprovacoes", label: "Aprovações" },
-  { id: "ferias", label: "Férias" },
-  { id: "atestados", label: "Atestados" },
-  { id: "senha", label: "Trocar senha" },
+  { grupo: "Visão geral", itens: [{ id: "dashboard", label: "Dashboard" }] },
+  { grupo: "Operação", itens: [
+    { id: "cronograma", label: "Cronograma" },
+    { id: "plantoes", label: "Plantões" },
+  ] },
+  { grupo: "Solicitações", itens: [
+    { id: "aprovacoes", label: "Aprovações" },
+    { id: "ferias", label: "Férias" },
+    { id: "atestados", label: "Atestados" },
+  ] },
+  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
 ];
 const NAV_COLAB = [
-  { id: "meus-plantoes", label: "Meus plantões" },
-  { id: "cronograma-equipe", label: "Cronograma do setor" },
-  { id: "solicitar-folga", label: "Solicitar folga" },
-  { id: "ferias", label: "Minhas férias" },
-  { id: "atestados", label: "Meus atestados" },
-  { id: "avisos", label: "Painel de avisos" },
-  { id: "senha", label: "Trocar senha" },
+  { grupo: "Meu dia a dia", itens: [
+    { id: "meus-plantoes", label: "Meus plantões" },
+    { id: "cronograma-equipe", label: "Cronograma do setor" },
+  ] },
+  { grupo: "Solicitações", itens: [
+    { id: "solicitar-folga", label: "Solicitar folga" },
+    { id: "ferias", label: "Minhas férias" },
+    { id: "atestados", label: "Meus atestados" },
+  ] },
+  { grupo: "Comunicação", itens: [{ id: "avisos", label: "Painel de avisos" }] },
 ];
 
 const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador" };
@@ -135,7 +144,8 @@ function Shell() {
   if (!user) return <Login />;
 
   const nav = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-  const activeTab = tab || (showAdminPages || isSupervisor ? "dashboard" : "meus-plantoes");
+  const primeiroItem = nav[0]?.itens[0]?.id;
+  const activeTab = tab || (primeiroItem || "dashboard");
 
   return (
     <div className="app-shell">
@@ -148,18 +158,26 @@ function Shell() {
         <div className="sidebar-user">
           <div className="name">{user.nome}</div>
           <div className="role">{ROLE_LABEL[user.role] || user.role}{user.equipe ? ` · ${user.equipe}` : ""}</div>
-          <button onClick={logout}>Sair</button>
         </div>
         <nav className="nav">
-          {nav.map((item) => (
-            <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>
+          {nav.map((secao) => (
+            <div key={secao.grupo} className="nav-group">
+              <div className="nav-group-label">{secao.grupo}</div>
+              {secao.itens.map((item) => (
+                <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>
+              ))}
+            </div>
           ))}
         </nav>
-        <div className="nav-footnote">
-          {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
-          {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
-          {isSupervisor && `Você gerencia colaboradores, plantões, folgas, férias e atestados — só ${user.equipes_gerenciadas?.length > 1 ? `dos setores: ${user.equipes_gerenciadas.join(", ")}` : `do seu setor (${user.equipe})`}.`}
-          {!isAdmin && !isViewer && !isSupervisor && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
+        <div className="sidebar-footer">
+          <div className="nav-footnote">
+            {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
+            {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
+            {isSupervisor && `Você gerencia colaboradores, plantões, folgas, férias e atestados — só ${user.equipes_gerenciadas?.length > 1 ? `dos setores: ${user.equipes_gerenciadas.join(", ")}` : `do seu setor (${user.equipe})`}.`}
+            {!isAdmin && !isViewer && !isSupervisor && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
+          </div>
+          <button className={activeTab === "senha" ? "active" : ""} onClick={() => setTab("senha")}>Trocar senha</button>
+          <button onClick={logout} className="sair">Sair</button>
         </div>
       </aside>
 
