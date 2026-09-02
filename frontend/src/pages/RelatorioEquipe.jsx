@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox } from "../components/UI";
 import { useApiList } from "../lib/hooks";
-import { identificarCotaSindicato, cicloSindicatoAtual, prazoFolgaPlantao, todayISO, COTAS_SINDICATO } from "../lib/helpers";
+import { identificarCotaSindicato, resolverCotasSindicato, janelasAbertasNaoUsadas, cicloSindicatoAtual, prazoFolgaPlantao, todayISO, COTAS_SINDICATO } from "../lib/helpers";
 
 export default function RelatorioEquipe() {
   const [ano, setAno] = useState(new Date().getFullYear());
@@ -44,17 +44,15 @@ export default function RelatorioEquipe() {
       else aguardando++;
     }
 
-    // Cotas de sindicato: usa a mesma lógica de janelas, mas só olha o ciclo atual
-    const usadasPorCota = {};
-    for (const s of minhasSolicitacoes) {
-      if (s.tipo !== "folga_sindicato" || s.status === "rejeitada") continue;
-      const cota = identificarCotaSindicato(s.data_solicitada);
-      if (cota && cota.ciclo === cicloAtual) usadasPorCota[cota.nome] = true;
-    }
+    // Cotas de sindicato: resolve corretamente mesmo com janelas sobrepostas
+    // (ex: uma folga em agosto não "rouba" a cota de maio se maio já foi usada).
+    const minhasFolgasSindicato = minhasSolicitacoes.filter((s) => s.tipo === "folga_sindicato" && s.status !== "rejeitada");
+    const usadasPorCota = resolverCotasSindicato(minhasFolgasSindicato, cicloAtual);
     const totalUsadasSindicato = Object.keys(usadasPorCota).length;
-    // Janela aberta AGORA que ainda não foi usada — vale um lembrete pro gestor.
-    const cotaAberta = identificarCotaSindicato(hoje);
-    const sindicatoPendente = cotaAberta && cotaAberta.ciclo === cicloAtual && !usadasPorCota[cotaAberta.nome];
+    // Janela(s) abertas AGORA que ainda não foram usadas — pode ser mais de
+    // uma no período de transição (ex: agosto tem Maio e Agosto abertas ao
+    // mesmo tempo) — vale um lembrete pro gestor de cada uma.
+    const abertasPendentes = janelasAbertasNaoUsadas(hoje, usadasPorCota, cicloAtual);
 
     return {
       colaborador: c,
@@ -62,15 +60,14 @@ export default function RelatorioEquipe() {
       folgas: folgasAprovadasNoAno.length,
       atestados: atestadosNoAno.length,
       sindicatoUsadas: totalUsadasSindicato,
-      sindicatoPendente,
-      cotaAbertaNome: cotaAberta?.nome,
+      abertasPendentes,
       atrasados,
       aguardando,
     };
   }).sort((a, b) => (b.atrasados - a.atrasados) || a.colaborador.nome.localeCompare(b.colaborador.nome));
 
   const totalAtrasados = linhas.reduce((s, l) => s + l.atrasados, 0);
-  const totalSindicatoPendente = linhas.filter((l) => l.sindicatoPendente).length;
+  const totalSindicatoPendente = linhas.filter((l) => l.abertasPendentes.length > 0).length;
 
   return (
     <>
@@ -115,7 +112,9 @@ export default function RelatorioEquipe() {
                     <td className="mono">{l.atestados}</td>
                     <td>
                       <span className="mono">{l.sindicatoUsadas}/{COTAS_SINDICATO.length}</span>
-                      {l.sindicatoPendente && <Pill status="pendente" style={{ marginLeft: 6 }}>Janela "{l.cotaAbertaNome}" aberta</Pill>}
+                      {l.abertasPendentes.map((j) => (
+                        <Pill key={j.nome} status="pendente" style={{ marginLeft: 6 }}>Janela "{j.nome}" aberta</Pill>
+                      ))}
                     </td>
                     <td>
                       {l.atrasados === 0 && l.aguardando === 0 && <span style={{ color: "var(--text-muted)" }}>—</span>}

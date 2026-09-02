@@ -22,28 +22,39 @@ def _ultimo_dia_mes(ano: int, mes: int, dia_sugerido: int) -> int:
     return min(dia_sugerido, calendar.monthrange(ano, mes)[1])
 
 
-def identificar_cota_sindicato(data_alvo: date) -> dict | None:
-    """Descobre em qual das 4 janelas do 'ano sindical' uma data cai.
-    Retorna None se a data estiver fora de qualquer janela (ex: março/abril)."""
+def _janelas_que_contem(data_alvo: date) -> list[dict]:
+    """Retorna TODAS as janelas de sindicato que contêm essa data. Em meses de
+    transição (agosto, outubro) mais de uma janela cobre a mesma data ao
+    mesmo tempo — por isso isso retorna uma lista, não um valor único."""
+    resultado = []
     for cota in COTAS_SINDICATO:
         cruza_ano = cota["mes_fim"] < cota["mes_ini"]
         if not cruza_ano:
             ini = date(data_alvo.year, cota["mes_ini"], cota["dia_ini"])
             fim = date(data_alvo.year, cota["mes_fim"], _ultimo_dia_mes(data_alvo.year, cota["mes_fim"], cota["dia_fim"]))
             if ini <= data_alvo <= fim:
-                return {"nome": cota["nome"], "ciclo": data_alvo.year, "inicio": ini, "fim": fim}
+                resultado.append({"nome": cota["nome"], "ciclo": data_alvo.year, "inicio": ini, "fim": fim})
         else:
-            # pode estar na parte que começa neste ano (dez deste ano -> fev do próximo)
             ini = date(data_alvo.year, cota["mes_ini"], cota["dia_ini"])
             fim = date(data_alvo.year + 1, cota["mes_fim"], _ultimo_dia_mes(data_alvo.year + 1, cota["mes_fim"], cota["dia_fim"]))
             if ini <= data_alvo <= fim:
-                return {"nome": cota["nome"], "ciclo": data_alvo.year, "inicio": ini, "fim": fim}
-            # ou na parte que começou no ano anterior (dez do ano passado -> fev deste ano)
+                resultado.append({"nome": cota["nome"], "ciclo": data_alvo.year, "inicio": ini, "fim": fim})
             ini2 = date(data_alvo.year - 1, cota["mes_ini"], cota["dia_ini"])
             fim2 = date(data_alvo.year, cota["mes_fim"], _ultimo_dia_mes(data_alvo.year, cota["mes_fim"], cota["dia_fim"]))
             if ini2 <= data_alvo <= fim2:
-                return {"nome": cota["nome"], "ciclo": data_alvo.year - 1, "inicio": ini2, "fim": fim2}
-    return None
+                resultado.append({"nome": cota["nome"], "ciclo": data_alvo.year - 1, "inicio": ini2, "fim": fim2})
+    return resultado
+
+
+def identificar_cota_sindicato(data_alvo: date) -> dict | None:
+    """Uso simples/informativo (ex: 'qual janela abriu hoje') — quando há mais
+    de uma janela sobreposta, retorna a que vence primeiro. Pra decidir qual
+    janela uma SOLICITAÇÃO específica consome, use cota_disponivel_para_data,
+    que também considera o que a pessoa já usou."""
+    candidatas = _janelas_que_contem(data_alvo)
+    if not candidatas:
+        return None
+    return sorted(candidatas, key=lambda c: c["fim"])[0]
 
 
 def ciclo_sindicato_atual(hoje: date | None = None) -> int:
@@ -53,18 +64,30 @@ def ciclo_sindicato_atual(hoje: date | None = None) -> int:
 
 def resumo_cotas_sindicato(db: Session, colaborador_id: str, ciclo: int | None = None) -> dict:
     """Quantas das 4 folgas sindicais desse ciclo já foram usadas (pedidas,
-    aprovadas ou pendentes — só rejeitada não conta)."""
+    aprovadas ou pendentes — só rejeitada não conta).
+
+    Processa as solicitações em ordem cronológica e, pra cada uma, escolhe a
+    janela que ela consome: entre as janelas que contêm aquela data, prioriza
+    uma que AINDA não foi usada (e, havendo mais de uma livre — período de
+    transição entre agosto/outubro por exemplo —, a que vence primeiro). Isso
+    evita que uma folga em agosto "roube" sem querer a cota de maio quando na
+    verdade deveria consumir a cota de agosto."""
     ciclo = ciclo if ciclo is not None else ciclo_sindicato_atual()
     solicitacoes = (
         db.query(SolicitacaoFolga)
         .filter(SolicitacaoFolga.colaborador_id == colaborador_id, SolicitacaoFolga.tipo == "folga_sindicato", SolicitacaoFolga.status != "rejeitada")
+        .order_by(SolicitacaoFolga.data_solicitada)
         .all()
     )
     usadas_por_cota = {}
     for s in solicitacoes:
-        cota = identificar_cota_sindicato(s.data_solicitada)
-        if cota and cota["ciclo"] == ciclo:
-            usadas_por_cota[cota["nome"]] = s
+        candidatas = [j for j in _janelas_que_contem(s.data_solicitada) if j["ciclo"] == ciclo]
+        if not candidatas:
+            continue
+        nao_usadas = [c for c in candidatas if c["nome"] not in usadas_por_cota]
+        pool = nao_usadas if nao_usadas else candidatas
+        escolhida = sorted(pool, key=lambda c: c["fim"])[0]
+        usadas_por_cota[escolhida["nome"]] = s
 
     cotas_info = []
     for cota in COTAS_SINDICATO:
@@ -76,6 +99,27 @@ def resumo_cotas_sindicato(db: Session, colaborador_id: str, ciclo: int | None =
             "status": uso.status if uso else None,
         })
     return {"ciclo": ciclo, "total_usadas": len(usadas_por_cota), "total_disponivel": len(COTAS_SINDICATO), "cotas": cotas_info}
+
+
+def cota_disponivel_para_data(db: Session, colaborador_id: str, data_alvo: date, ciclo: int | None = None) -> tuple[str | None, str | None, str | None]:
+    """Valida uma NOVA solicitação de folga sindicato pra essa data. Retorna
+    (nome_da_janela_escolhida, tipo_de_erro, mensagem). tipo_de_erro é
+    'fora_janela' (data não cai em nenhuma janela) ou 'ja_usada' (todas as
+    janelas que cobrem essa data já foram usadas nesse ciclo)."""
+    ciclo = ciclo if ciclo is not None else ciclo_sindicato_atual()
+    candidatas = [j for j in _janelas_que_contem(data_alvo) if j["ciclo"] == ciclo]
+    if not candidatas:
+        return None, "fora_janela", "Essa data não está dentro de nenhuma janela de folga sindicato (Maio, Agosto, Outubro ou Dezembro)."
+
+    resumo = resumo_cotas_sindicato(db, colaborador_id, ciclo)
+    usadas_nomes = {c["nome"] for c in resumo["cotas"] if c["usada"]}
+    nao_usadas = [c for c in candidatas if c["nome"] not in usadas_nomes]
+    if not nao_usadas:
+        nomes = " e ".join(c["nome"] for c in candidatas)
+        return None, "ja_usada", f"A folga sindicato da janela '{nomes}' já foi usada nesse ciclo (são 4 por ano, uma por janela)."
+
+    escolhida = sorted(nao_usadas, key=lambda c: c["fim"])[0]
+    return escolhida["nome"], None, None
 
 
 # --- Prazo de folga de plantão: 6 dias corridos, ou até o domingo da semana

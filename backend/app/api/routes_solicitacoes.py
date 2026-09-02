@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Colaborador, Plantao, SolicitacaoFolga
 from app.db.session import get_db
-from app.logic import dia_util_para_folga, horarios_similares, identificar_cota_sindicato, prazo_folga_plantao, resumo_cotas_sindicato
+from app.logic import cota_disponivel_para_data, dia_util_para_folga, horarios_similares, prazo_folga_plantao, resumo_cotas_sindicato
 from app.schemas import ResolverSolicitacaoIn, ResumoCotasSindicatoOut, SolicitacaoIn, SolicitacaoOut
 
 router = APIRouter(prefix="/solicitacoes", tags=["solicitacoes"])
@@ -86,13 +86,11 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
             raise HTTPException(status.HTTP_400_BAD_REQUEST, motivo)
 
     if body.tipo == "folga_sindicato":
-        cota = identificar_cota_sindicato(body.data_solicitada)
-        if not cota:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Essa data não está dentro de nenhuma janela de folga sindicato (Maio, Agosto, Outubro ou Dezembro).")
-        resumo = resumo_cotas_sindicato(db, alvo.id, cota["ciclo"])
-        cota_info = next(c for c in resumo["cotas"] if c["nome"] == cota["nome"])
-        if cota_info["usada"]:
-            raise HTTPException(status.HTTP_409_CONFLICT, f"A folga sindicato da janela '{cota['nome']}' já foi usada nesse ciclo (são 4 por ano, uma por janela).")
+        _, erro_tipo, erro_msg = cota_disponivel_para_data(db, alvo.id, body.data_solicitada)
+        if erro_tipo == "fora_janela":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, erro_msg)
+        if erro_tipo == "ja_usada":
+            raise HTTPException(status.HTTP_409_CONFLICT, erro_msg)
         ok, motivo = dia_util_para_folga(db, body.data_solicitada)
         if not ok:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, motivo)

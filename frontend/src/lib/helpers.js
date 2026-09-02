@@ -54,26 +54,61 @@ function ultimoDiaMes(ano, mes) {
   return new Date(ano, mes, 0).getDate();
 }
 
-/** Espelha app/logic.py::identificar_cota_sindicato — mesma regra, mesmo resultado. */
-export function identificarCotaSindicato(dataStr) {
+function janelasQueContemData(dataStr) {
   const d = new Date(dataStr + "T00:00:00");
   const ano = d.getFullYear();
+  const resultado = [];
   for (const cota of COTAS_SINDICATO) {
     const cruzaAno = cota.mesFim < cota.mesIni;
     if (!cruzaAno) {
       const ini = new Date(ano, cota.mesIni - 1, cota.diaIni);
       const fim = new Date(ano, cota.mesFim - 1, Math.min(cota.diaFim, ultimoDiaMes(ano, cota.mesFim)));
-      if (d >= ini && d <= fim) return { nome: cota.nome, ciclo: ano };
+      if (d >= ini && d <= fim) resultado.push({ nome: cota.nome, ciclo: ano, fim });
     } else {
       const ini1 = new Date(ano, cota.mesIni - 1, cota.diaIni);
       const fim1 = new Date(ano + 1, cota.mesFim - 1, Math.min(cota.diaFim, ultimoDiaMes(ano + 1, cota.mesFim)));
-      if (d >= ini1 && d <= fim1) return { nome: cota.nome, ciclo: ano };
+      if (d >= ini1 && d <= fim1) resultado.push({ nome: cota.nome, ciclo: ano, fim: fim1 });
       const ini2 = new Date(ano - 1, cota.mesIni - 1, cota.diaIni);
       const fim2 = new Date(ano, cota.mesFim - 1, Math.min(cota.diaFim, ultimoDiaMes(ano, cota.mesFim)));
-      if (d >= ini2 && d <= fim2) return { nome: cota.nome, ciclo: ano - 1 };
+      if (d >= ini2 && d <= fim2) resultado.push({ nome: cota.nome, ciclo: ano - 1, fim: fim2 });
     }
   }
-  return null;
+  return resultado;
+}
+
+/** Uso simples/informativo (ex: "qual janela está aberta hoje"). Quando há
+ * mais de uma janela sobreposta, retorna a que vence primeiro. Pra saber
+ * quais janelas uma pessoa já usou de verdade, use resolverCotasSindicato. */
+export function identificarCotaSindicato(dataStr) {
+  const candidatas = janelasQueContemData(dataStr);
+  if (candidatas.length === 0) return null;
+  return [...candidatas].sort((a, b) => a.fim - b.fim)[0];
+}
+
+/** Espelha app/logic.py::resumo_cotas_sindicato — processa as solicitações
+ * em ordem cronológica e escolhe, pra cada uma, a janela que ela consome:
+ * prioriza uma janela ainda não usada (e, havendo mais de uma livre — meses
+ * de transição como agosto/outubro —, a que vence primeiro). Evita que uma
+ * folga de agosto "roube" sem querer a cota de maio.
+ * `solicitacoesSindicato` já deve vir filtrada (tipo folga_sindicato, status != rejeitada, de uma pessoa só). */
+export function resolverCotasSindicato(solicitacoesSindicato, ciclo) {
+  const ordenadas = [...solicitacoesSindicato].sort((a, b) => a.data_solicitada.localeCompare(b.data_solicitada));
+  const usadasPorCota = {};
+  for (const s of ordenadas) {
+    const candidatas = janelasQueContemData(s.data_solicitada).filter((j) => j.ciclo === ciclo);
+    if (candidatas.length === 0) continue;
+    const naoUsadas = candidatas.filter((c) => !usadasPorCota[c.nome]);
+    const pool = naoUsadas.length > 0 ? naoUsadas : candidatas;
+    const escolhida = [...pool].sort((a, b) => a.fim - b.fim)[0];
+    usadasPorCota[escolhida.nome] = s;
+  }
+  return usadasPorCota;
+}
+
+/** Todas as janelas abertas hoje que ainda não foram usadas — pode ser mais
+ * de uma nos meses de transição (útil pro lembrete no relatório). */
+export function janelasAbertasNaoUsadas(hoje, usadasPorCota, ciclo) {
+  return janelasQueContemData(hoje).filter((j) => j.ciclo === ciclo && !usadasPorCota[j.nome]);
 }
 
 export function cicloSindicatoAtual(hoje = new Date()) {
