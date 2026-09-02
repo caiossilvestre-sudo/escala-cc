@@ -25,8 +25,8 @@ export function EditableSelect({ value, onChange, options, placeholder = "Novo v
   );
 }
 
-export function Pill({ status, children }) {
-  return <span className={`pill ${status}`}>{children}</span>;
+export function Pill({ status, children, ...rest }) {
+  return <span className={`pill ${status}`} {...rest}>{children}</span>;
 }
 
 export function TopBar({ title, subtitle, right }) {

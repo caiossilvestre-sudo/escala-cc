@@ -43,6 +43,57 @@ export function timesOverlap(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+export const COTAS_SINDICATO = [
+  { nome: "Maio", mesIni: 5, diaIni: 1, mesFim: 8, diaFim: 31 },
+  { nome: "Agosto", mesIni: 8, diaIni: 1, mesFim: 10, diaFim: 31 },
+  { nome: "Outubro", mesIni: 10, diaIni: 1, mesFim: 11, diaFim: 30 },
+  { nome: "Dezembro", mesIni: 12, diaIni: 1, mesFim: 2, diaFim: 28 },
+];
+
+function ultimoDiaMes(ano, mes) {
+  return new Date(ano, mes, 0).getDate();
+}
+
+/** Espelha app/logic.py::identificar_cota_sindicato — mesma regra, mesmo resultado. */
+export function identificarCotaSindicato(dataStr) {
+  const d = new Date(dataStr + "T00:00:00");
+  const ano = d.getFullYear();
+  for (const cota of COTAS_SINDICATO) {
+    const cruzaAno = cota.mesFim < cota.mesIni;
+    if (!cruzaAno) {
+      const ini = new Date(ano, cota.mesIni - 1, cota.diaIni);
+      const fim = new Date(ano, cota.mesFim - 1, Math.min(cota.diaFim, ultimoDiaMes(ano, cota.mesFim)));
+      if (d >= ini && d <= fim) return { nome: cota.nome, ciclo: ano };
+    } else {
+      const ini1 = new Date(ano, cota.mesIni - 1, cota.diaIni);
+      const fim1 = new Date(ano + 1, cota.mesFim - 1, Math.min(cota.diaFim, ultimoDiaMes(ano + 1, cota.mesFim)));
+      if (d >= ini1 && d <= fim1) return { nome: cota.nome, ciclo: ano };
+      const ini2 = new Date(ano - 1, cota.mesIni - 1, cota.diaIni);
+      const fim2 = new Date(ano, cota.mesFim - 1, Math.min(cota.diaFim, ultimoDiaMes(ano, cota.mesFim)));
+      if (d >= ini2 && d <= fim2) return { nome: cota.nome, ciclo: ano - 1 };
+    }
+  }
+  return null;
+}
+
+export function cicloSindicatoAtual(hoje = new Date()) {
+  const mes = hoje.getMonth() + 1;
+  return mes <= 2 ? hoje.getFullYear() - 1 : hoje.getFullYear();
+}
+
+/** Espelha app/logic.py::prazo_folga_plantao — 6 dias corridos, ou até o
+ * domingo da semana seguinte se o plantão foi num feriado. */
+export function prazoFolgaPlantao(dataPlantaoStr, feriados) {
+  const ehFeriado = feriados.some((f) => f.data === dataPlantaoStr);
+  if (ehFeriado) {
+    const d = new Date(dataPlantaoStr + "T00:00:00");
+    const diasAteDomingo = (7 - d.getDay()) % 7;
+    const domingoAtual = addDays(dataPlantaoStr, diasAteDomingo);
+    return addDays(domingoAtual, 7);
+  }
+  return addDays(dataPlantaoStr, 6);
+}
+
 export const TIPO_LABEL = { folga_plantao: "Folga de plantão", folga_sindicato: "Folga normal (sindicato)" };
 
 /** Determina o que mostrar numa célula do cronograma para um colaborador+dia. */

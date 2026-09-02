@@ -4,6 +4,7 @@ import { useIdleLogout } from "./lib/hooks";
 import { api } from "./api/client";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import RelatorioEquipe from "./pages/RelatorioEquipe";
 import CronogramaAdmin from "./pages/CronogramaAdmin";
 import Colaboradores from "./pages/Colaboradores";
 import Plantoes from "./pages/Plantoes";
@@ -18,7 +19,10 @@ import SolicitarFolga from "./pages/SolicitarFolga";
 import ChangePassword from "./pages/ChangePassword";
 
 const NAV_ADMIN = [
-  { grupo: "Visão geral", itens: [{ id: "dashboard", label: "Dashboard" }] },
+  { grupo: "Visão geral", itens: [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "relatorio", label: "Relatório da equipe" },
+  ] },
   { grupo: "Operação", itens: [
     { id: "cronograma", label: "Cronograma" },
     { id: "plantoes", label: "Plantões" },
@@ -35,7 +39,10 @@ const NAV_ADMIN = [
 // Supervisor: só o operacional do próprio setor. Sem Feriados (política da
 // empresa inteira) e sem a aba de Avisos administrativa (rotina global).
 const NAV_SUPERVISOR = [
-  { grupo: "Visão geral", itens: [{ id: "dashboard", label: "Dashboard" }] },
+  { grupo: "Visão geral", itens: [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "relatorio", label: "Relatório da equipe" },
+  ] },
   { grupo: "Operação", itens: [
     { id: "cronograma", label: "Cronograma" },
     { id: "plantoes", label: "Plantões" },
@@ -196,6 +203,7 @@ function Shell() {
             sem precisar mexer em cada tela individualmente — só pro visualizador. */}
         <fieldset disabled={isViewer} style={{ border: "none", margin: 0, padding: 0 }}>
           {activeTab === "dashboard" && (showAdminPages || isSupervisor) && <Dashboard onNavigate={setTab} />}
+          {activeTab === "relatorio" && (showAdminPages || isSupervisor) && <RelatorioEquipe />}
           {activeTab === "cronograma" && (showAdminPages || isSupervisor) && <CronogramaAdmin />}
           {activeTab === "colaboradores" && (showAdminPages || isSupervisor) && <Colaboradores user={user} />}
           {activeTab === "plantoes" && (showAdminPages || isSupervisor) && <Plantoes />}
