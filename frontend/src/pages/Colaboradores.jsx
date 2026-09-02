@@ -265,7 +265,9 @@ export default function Colaboradores({ user }) {
   const turnoOptions = Array.from(new Set(data.map((c) => c.turno))).filter(Boolean);
   const escalaOptions = Array.from(new Set(data.map((c) => c.escala_tipo))).filter(Boolean);
 
-  const dataFiltrada = filtroSetor === "Todos" ? data : data.filter((c) => c.equipe === filtroSetor);
+  const dataFiltrada = (filtroSetor === "Todos" ? data : data.filter((c) => c.equipe === filtroSetor))
+    .slice()
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
 
   const ROLE_PILL_LABEL = { admin: "Admin", visualizador: "Visualizador", supervisor: "Supervisor" };
 

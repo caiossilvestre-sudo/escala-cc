@@ -5,6 +5,8 @@ import { identificarCotaSindicato, cicloSindicatoAtual, prazoFolgaPlantao, today
 
 export default function RelatorioEquipe() {
   const [ano, setAno] = useState(new Date().getFullYear());
+  const [setorFiltro, setSetorFiltro] = useState("Todos");
+  const [buscaNome, setBuscaNome] = useState("");
   const colaboradores = useApiList("/colaboradores");
   const plantoes = useApiList("/plantoes");
   const solicitacoes = useApiList("/solicitacoes");
@@ -17,7 +19,11 @@ export default function RelatorioEquipe() {
   const hoje = todayISO();
   const cicloAtual = cicloSindicatoAtual();
 
-  const equipe = colaboradores.data.filter((c) => c.role === "colaborador" || c.role === "supervisor");
+  const equipeCompleta = colaboradores.data.filter((c) => c.role === "colaborador" || c.role === "supervisor");
+  const setoresDisponiveis = Array.from(new Set(equipeCompleta.map((c) => c.equipe))).filter(Boolean).sort();
+  const equipe = equipeCompleta
+    .filter((c) => setorFiltro === "Todos" || c.equipe === setorFiltro)
+    .filter((c) => !buscaNome.trim() || c.nome.toLowerCase().includes(buscaNome.trim().toLowerCase()));
 
   const linhas = equipe.map((c) => {
     const meusPlantoes = plantoes.data.filter((p) => p.colaborador_id === c.id);
@@ -69,7 +75,16 @@ export default function RelatorioEquipe() {
   return (
     <>
       <TopBar title="Relatório da equipe" subtitle="Folgas, atestados, sindicato e pendências por colaborador"
-        right={<input type="number" value={ano} onChange={(e) => setAno(Number(e.target.value))} className="mono" style={{ width: 90, border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />} />
+        right={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input type="text" placeholder="Buscar colaborador…" value={buscaNome} onChange={(e) => setBuscaNome(e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, width: 170 }} />
+            <select value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }}>
+              <option value="Todos">Todos os setores</option>
+              {setoresDisponiveis.map((s) => <option key={s}>{s}</option>)}
+            </select>
+            <input type="number" value={ano} onChange={(e) => setAno(Number(e.target.value))} className="mono" style={{ width: 90, border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+          </div>
+        } />
       <div className="content content-wide">
         <ErrorBox error={error} />
         {(totalAtrasados > 0 || totalSindicatoPendente > 0) && (
