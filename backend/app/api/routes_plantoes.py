@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import check_escopo_equipe, get_current_colaborador, log_action, require_admin_or_supervisor
+from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Colaborador, Plantao, PlantaoTemplate, SolicitacaoFolga
 from app.db.session import get_db
 from app.logic import checar_elegibilidade, datas_alvo_do_mes, ordenar_por_justica
@@ -17,7 +17,7 @@ def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_curren
     if user.role == "colaborador":
         q = q.filter(Plantao.sugerido == False)  # noqa: E712
     if user.role == "supervisor":
-        ids_equipe = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
+        ids_equipe = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe.in_(equipes_do_supervisor(user)))]
         q = q.filter(Plantao.colaborador_id.in_(ids_equipe))
     return q.order_by(Plantao.data).all()
 
@@ -97,8 +97,8 @@ def gerar(body: GerarPlantoesIn, request: Request, db: Session = Depends(get_db)
     templates_query = db.query(PlantaoTemplate)
     colaboradores_query = db.query(Colaborador).filter(Colaborador.status == "ativo", Colaborador.role != "admin")
     if user.role == "supervisor":
-        templates_query = templates_query.filter(PlantaoTemplate.equipe == user.equipe)
-        colaboradores_query = colaboradores_query.filter(Colaborador.equipe == user.equipe)
+        templates_query = templates_query.filter(PlantaoTemplate.equipe.in_(equipes_do_supervisor(user)))
+        colaboradores_query = colaboradores_query.filter(Colaborador.equipe.in_(equipes_do_supervisor(user)))
     templates = templates_query.all()
     colaboradores = colaboradores_query.all()
 
@@ -144,7 +144,7 @@ def gerar(body: GerarPlantoesIn, request: Request, db: Session = Depends(get_db)
 def listar_templates(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(PlantaoTemplate)
     if user.role == "supervisor":
-        q = q.filter(PlantaoTemplate.equipe == user.equipe)
+        q = q.filter(PlantaoTemplate.equipe.in_(equipes_do_supervisor(user)))
     return q.all()
 
 

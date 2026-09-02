@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.core.config import settings
@@ -15,3 +15,23 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def run_safe_migrations():
+    """Adiciona colunas/tabelas novas sem tocar em nada que já existe.
+    'IF NOT EXISTS' faz isso seguro de rodar toda vez que o backend sobe — se
+    a coluna já existe, não faz nada. Nenhum dado é apagado ou alterado;
+    colunas novas ficam NULL pra quem já estava cadastrado antes."""
+    if not settings.database_url.startswith("postgresql"):
+        return  # sintaxe abaixo é específica do Postgres (produção); sqlite (testes locais) já cria tudo via create_all
+    statements = [
+        "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS equipes_gerenciadas JSON",
+        "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS data_admissao DATE",
+        "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS data_aniversario DATE",
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+            except Exception as e:
+                print(f"[migração] aviso (provavelmente já aplicada antes): {e}")

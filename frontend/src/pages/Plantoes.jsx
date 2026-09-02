@@ -134,10 +134,13 @@ function SugestaoManual({ colaboradores, plantoes, ferias, atestados, solicitaco
 
 function NovoPlantaoManualForm({ colaboradores, onCriado, showToast }) {
   const [data, setData] = useState(todayISO());
+  const [setorFiltro, setSetorFiltro] = useState("Todos");
   const [linhas, setLinhas] = useState([{ colaborador_id: "", horario_inicio: "", horario_fim: "", tipo: "" }]);
   const [enviando, setEnviando] = useState(false);
 
   const candidatos = colaboradores.filter((c) => c.role !== "admin");
+  const setoresDisponiveis = Array.from(new Set(candidatos.map((c) => c.equipe))).filter(Boolean);
+  const candidatosFiltrados = setorFiltro === "Todos" ? candidatos : candidatos.filter((c) => c.equipe === setorFiltro);
 
   const atualizarLinha = (i, campo, valor) => {
     setLinhas((ls) => ls.map((l, idx) => (idx === i ? { ...l, [campo]: valor } : l)));
@@ -169,13 +172,21 @@ function NovoPlantaoManualForm({ colaboradores, onCriado, showToast }) {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="section-title">Novo plantão (manual)</div>
-      <div className="field" style={{ maxWidth: 220, marginBottom: 12 }}><label>Data (vale para todas as linhas abaixo)</label><input type="date" value={data} onChange={(e) => setData(e.target.value)} /></div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="field" style={{ maxWidth: 220 }}><label>Data (vale para todas as linhas abaixo)</label><input type="date" value={data} onChange={(e) => setData(e.target.value)} /></div>
+        <div className="field" style={{ maxWidth: 220 }}><label>Filtrar setor (facilita achar quem procura)</label>
+          <select value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}>
+            <option value="Todos">Todos os setores</option>
+            {setoresDisponiveis.map((e) => <option key={e}>{e}</option>)}
+          </select>
+        </div>
+      </div>
 
       {linhas.map((l, i) => (
         <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 10, paddingBottom: 10, borderBottom: i < linhas.length - 1 ? "1px dashed var(--border)" : "none" }}>
           <div className="field" style={{ minWidth: 160 }}><label>Colaborador</label>
             <select value={l.colaborador_id} onChange={(e) => atualizarLinha(i, "colaborador_id", e.target.value)}>
-              <option value="">Selecione</option>{candidatos.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              <option value="">Selecione</option>{candidatosFiltrados.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           </div>
           <div className="field" style={{ minWidth: 110 }}><label>Início</label><input type="time" value={l.horario_inicio} onChange={(e) => atualizarLinha(i, "horario_inicio", e.target.value)} /></div>

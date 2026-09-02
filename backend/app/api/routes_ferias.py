@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import check_escopo_equipe, get_current_colaborador, log_action, require_admin_or_supervisor
+from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Colaborador, Ferias
 from app.db.session import get_db
 from app.schemas import FeriasAvancarIn, FeriasIn, FeriasOut
@@ -17,8 +17,11 @@ TRANSICOES_VALIDAS = {
 @router.get("", response_model=list[FeriasOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(Ferias)
-    if user.role in ("colaborador", "supervisor"):
+    if user.role == "colaborador":
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
+        q = q.filter(Ferias.colaborador_id.in_(colegas_ids))
+    elif user.role == "supervisor":
+        colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe.in_(equipes_do_supervisor(user)))]
         q = q.filter(Ferias.colaborador_id.in_(colegas_ids))
     return q.order_by(Ferias.created_at.desc()).all()
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import check_escopo_equipe, get_current_colaborador, log_action, require_admin_or_supervisor
+from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Atestado, Colaborador
 from app.db.session import get_db
 from app.schemas import AtestadoIn, AtestadoOut
@@ -12,8 +12,11 @@ router = APIRouter(prefix="/atestados", tags=["atestados"])
 @router.get("", response_model=list[AtestadoOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
     q = db.query(Atestado)
-    if user.role in ("colaborador", "supervisor"):
+    if user.role == "colaborador":
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe == user.equipe)]
+        q = q.filter(Atestado.colaborador_id.in_(colegas_ids))
+    elif user.role == "supervisor":
+        colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe.in_(equipes_do_supervisor(user)))]
         q = q.filter(Atestado.colaborador_id.in_(colegas_ids))
     return q.order_by(Atestado.data_inicio.desc()).all()
 

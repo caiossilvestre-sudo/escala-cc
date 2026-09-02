@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 
 from sqlalchemy import (
     Column, String, Boolean, Date, DateTime, ForeignKey, Integer, JSON, Text
@@ -14,28 +14,32 @@ def gen_id() -> str:
 
 
 class Colaborador(Base):
-    """Também é o usuário do sistema (login). role = 'admin' ou 'colaborador'."""
     __tablename__ = "colaboradores"
 
     id = Column(String, primary_key=True, default=gen_id)
     nome = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="colaborador")  # 'admin' | 'colaborador'
+    role = Column(String, nullable=False, default="colaborador")
 
     equipe = Column(String, nullable=False)
     turno = Column(String, nullable=False, default="Manhã")
     escala_tipo = Column(String, nullable=False, default="6x2")
     horario_inicio = Column(String, nullable=False, default="08:00")
     horario_fim = Column(String, nullable=False, default="17:00")
-    status = Column(String, nullable=False, default="ativo")  # 'ativo' | 'inativo'
+    status = Column(String, nullable=False, default="ativo")
     data_desligamento = Column(Date, nullable=True)
     motivo_desligamento = Column(Text, nullable=True)
 
-    # Segurança de login
     failed_attempts = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime, nullable=True)
     must_change_password = Column(Boolean, nullable=False, default=True)
+
+    # Campos novos, todos opcionais — a base já tinha gente cadastrada sem
+    # essa informação, então nada aqui pode ser obrigatório.
+    equipes_gerenciadas = Column(JSON, nullable=True)  # lista de setores, só usado quando role="supervisor"
+    data_admissao = Column(Date, nullable=True)
+    data_aniversario = Column(Date, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -69,7 +73,7 @@ class Plantao(Base):
     horario_fim = Column(String, nullable=False)
     tipo = Column(String, nullable=True)
     template_id = Column(String, ForeignKey("plantao_templates.id"), nullable=True)
-    origem = Column(String, nullable=False, default="manual")  # 'manual' | 'auto'
+    origem = Column(String, nullable=False, default="manual")
     sugerido = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -80,10 +84,10 @@ class SolicitacaoFolga(Base):
     __tablename__ = "solicitacoes_folga"
     id = Column(String, primary_key=True, default=gen_id)
     colaborador_id = Column(String, ForeignKey("colaboradores.id"), nullable=False)
-    tipo = Column(String, nullable=False)  # 'folga_plantao' | 'folga_sindicato'
+    tipo = Column(String, nullable=False)
     plantao_id = Column(String, ForeignKey("plantoes.id"), nullable=True)
     data_solicitada = Column(Date, nullable=False)
-    status = Column(String, nullable=False, default="pendente")  # pendente|aprovada|rejeitada
+    status = Column(String, nullable=False, default="pendente")
     motivo_rejeicao = Column(Text, nullable=True)
     resolved_by = Column(String, ForeignKey("colaboradores.id"), nullable=True)
     resolved_at = Column(DateTime, nullable=True)
@@ -108,7 +112,6 @@ class Ferias(Base):
     data_inicio = Column(Date, nullable=False)
     data_fim = Column(Date, nullable=False)
     status = Column(String, nullable=False, default="solicitada")
-    # solicitada | enviado_rh | aprovada | ajustar | rejeitada
     nota_admin = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -119,7 +122,7 @@ class Feriado(Base):
     id = Column(String, primary_key=True, default=gen_id)
     data = Column(Date, nullable=False)
     nome = Column(String, nullable=False)
-    tipo = Column(String, nullable=False, default="obrigatorio")  # obrigatorio|facultativo
+    tipo = Column(String, nullable=False, default="obrigatorio")
     trabalha = Column(Boolean, nullable=False, default=True)
 
 
@@ -127,7 +130,7 @@ class Aviso(Base):
     __tablename__ = "avisos"
     id = Column(String, primary_key=True, default=gen_id)
     colaborador_id = Column(String, ForeignKey("colaboradores.id"), nullable=False)
-    tipo = Column(String, nullable=False)  # mensal | semanal | cobranca
+    tipo = Column(String, nullable=False)
     mensagem = Column(Text, nullable=False)
     data = Column(Date, nullable=False)
     canais = Column(JSON, nullable=False, default=list)
@@ -136,10 +139,6 @@ class Aviso(Base):
 
 
 class HistoricoEquipe(Base):
-    """Registro de cada mudança de equipe/turno de um colaborador. Mantém a
-    rastreabilidade de quem estava em qual setor quando — importante para
-    relatórios históricos continuarem corretos mesmo depois de uma
-    transferência, e para saber quando/por que alguém saiu de um grupo."""
     __tablename__ = "historico_equipe"
     id = Column(String, primary_key=True, default=gen_id)
     colaborador_id = Column(String, ForeignKey("colaboradores.id"), nullable=False)
@@ -152,14 +151,20 @@ class HistoricoEquipe(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Configuracao(Base):
+    """Tabela pequena de configurações editáveis pelo admin — hoje só a
+    mensagem de aniversário, mas serve pra qualquer texto ajustável no futuro."""
+    __tablename__ = "configuracoes"
+    chave = Column(String, primary_key=True)
+    valor = Column(Text, nullable=False)
+
+
 class AuditLog(Base):
-    """Registro de auditoria: quem fez o quê, quando. Essencial para investigar
-    qualquer alteração indevida depois do fato."""
     __tablename__ = "audit_log"
     id = Column(String, primary_key=True, default=gen_id)
     colaborador_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
-    acao = Column(String, nullable=False)  # ex: 'aprovar_folga', 'criar_colaborador'
-    entidade = Column(String, nullable=False)  # ex: 'solicitacao_folga'
+    acao = Column(String, nullable=False)
+    entidade = Column(String, nullable=False)
     entidade_id = Column(String, nullable=True)
     detalhes = Column(JSON, nullable=True)
     ip_address = Column(String, nullable=True)

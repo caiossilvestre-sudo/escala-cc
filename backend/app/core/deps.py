@@ -30,9 +30,18 @@ def require_admin(user: Colaborador = Depends(get_current_colaborador)) -> Colab
     return user
 
 
+def equipes_do_supervisor(user: Colaborador) -> list[str]:
+    """Setores que esse supervisor pode gerenciar. Cai pro setor único
+    cadastrado nele se 'equipes_gerenciadas' ainda não foi preenchido
+    (compatibilidade com supervisores criados antes desse campo existir)."""
+    if user.equipes_gerenciadas:
+        return list(user.equipes_gerenciadas)
+    return [user.equipe] if user.equipe else []
+
+
 def require_admin_or_supervisor(user: Colaborador = Depends(get_current_colaborador)) -> Colaborador:
-    """Admin edita tudo. Supervisor também pode editar, mas só dentro do
-    próprio setor — a checagem de qual setor é feita rota a rota, com
+    """Admin edita tudo. Supervisor também pode editar, mas só dentro dos
+    próprios setores — a checagem de qual setor é feita rota a rota, com
     check_escopo_equipe, depois que sabemos qual registro está sendo tocado."""
     if user.role not in ("admin", "supervisor"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Ação restrita a administradores e supervisores.")
@@ -40,10 +49,10 @@ def require_admin_or_supervisor(user: Colaborador = Depends(get_current_colabora
 
 
 def check_escopo_equipe(user: Colaborador, equipe_alvo: str):
-    """Bloqueia um supervisor de agir fora do próprio setor. Admin nunca é
+    """Bloqueia um supervisor de agir fora dos próprios setores. Admin nunca é
     restrito por esta checagem."""
-    if user.role == "supervisor" and equipe_alvo != user.equipe:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Fora do seu setor — supervisores só atuam na própria equipe.")
+    if user.role == "supervisor" and equipe_alvo not in equipes_do_supervisor(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Fora dos seus setores — supervisores só atuam nas próprias equipes.")
 
 
 def require_leitura_ampla(user: Colaborador = Depends(get_current_colaborador)) -> Colaborador:

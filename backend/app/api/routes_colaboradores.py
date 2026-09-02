@@ -3,9 +3,12 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_colaborador, log_action, require_admin, require_leitura_ampla
+from app.core.deps import (
+    check_escopo_equipe, equipes_do_supervisor, get_current_colaborador,
+    log_action, require_admin_or_supervisor,
+)
 from app.core.security import hash_password
-from app.db.models import Colaborador, HistoricoEquipe, Plantao, SolicitacaoFolga, Ferias
+from app.db.models import Colaborador, Ferias, HistoricoEquipe, Plantao, SolicitacaoFolga
 from app.db.session import get_db
 from app.schemas import (
     ColaboradorIn, ColaboradorOut, ColaboradorUpdateIn, DesligarIn, HistoricoEquipeOut, ResetarSenhaIn,
@@ -20,7 +23,7 @@ def listar(incluir_inativos: bool = False, db: Session = Depends(get_db), user: 
     if not incluir_inativos:
         q = q.filter(Colaborador.status == "ativo")
     if user.role == "supervisor":
-        q = q.filter(Colaborador.equipe == user.equipe)
+        q = q.filter(Colaborador.equipe.in_(equipes_do_supervisor(user)))
     return q.all()
 
 
@@ -30,33 +33,49 @@ def eu(user: Colaborador = Depends(get_current_colaborador)):
 
 
 @router.post("", response_model=ColaboradorOut, status_code=status.HTTP_201_CREATED)
-def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    if user.role == "supervisor":
+        check_escopo_equipe(user, body.equipe)
+        if body.role != "colaborador":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Supervisor só pode cadastrar colaboradores comuns.")
+
     existente = db.query(Colaborador).filter(Colaborador.email == body.email.lower()).first()
     if existente:
         raise HTTPException(status.HTTP_409_CONFLICT, "Já existe um colaborador com esse e-mail.")
 
     novo = Colaborador(
         nome=body.nome, email=body.email.lower(), role=body.role,
-        equipe=body.equipe, turno=body.turno, escala_tipo=body.escala_tipo,
+        equipe=body.equipe, equipes_gerenciadas=body.equipes_gerenciadas,
+        turno=body.turno, escala_tipo=body.escala_tipo,
         horario_inicio=body.horario_inicio, horario_fim=body.horario_fim,
         password_hash=hash_password(body.senha_inicial),
         must_change_password=True,
+        data_admissao=body.data_admissao, data_aniversario=body.data_aniversario,
     )
     db.add(novo)
     db.commit()
     db.refresh(novo)
-    log_action(db, request, admin, "criar_colaborador", "colaborador", novo.id, {"nome": novo.nome})
+    log_action(db, request, user, "criar_colaborador", "colaborador", novo.id, {"nome": novo.nome})
     return novo
 
 
 @router.patch("/{colaborador_id}", response_model=ColaboradorOut)
-def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Edita um colaborador já existente: nome, perfil (admin/colaborador/
-    visualizador), equipe, turno, escala ou horário. Toda mudança de equipe
-    ou turno fica registrada no histórico (com motivo obrigatório)."""
+def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    """Edita um colaborador já existente. Toda mudança de equipe ou turno fica
+    registrada no histórico (com motivo obrigatório). Supervisor não pode
+    mexer em perfil de acesso nem em quais setores alguém gerencia."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+
+    if user.role == "supervisor":
+        check_escopo_equipe(user, alvo.equipe)
+        if body.equipe is not None:
+            check_escopo_equipe(user, body.equipe)
+        if body.role is not None and body.role != alvo.role:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Supervisor não pode alterar o perfil de acesso de ninguém.")
+        if body.equipes_gerenciadas is not None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Supervisor não pode alterar quais setores alguém gerencia.")
 
     if body.role is not None and body.role != alvo.role and alvo.role == "admin" and body.role != "admin":
         outros_admins = db.query(Colaborador).filter(Colaborador.role == "admin", Colaborador.status == "ativo", Colaborador.id != alvo.id).count()
@@ -71,7 +90,7 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
             colaborador_id=alvo.id,
             equipe_anterior=alvo.equipe, equipe_nova=body.equipe or alvo.equipe,
             turno_anterior=alvo.turno, turno_novo=body.turno or alvo.turno,
-            motivo=body.motivo, alterado_por=admin.id,
+            motivo=body.motivo, alterado_por=user.id,
         ))
 
     if body.nome is not None:
@@ -80,6 +99,8 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
         alvo.role = body.role
     if body.equipe is not None:
         alvo.equipe = body.equipe
+    if body.equipes_gerenciadas is not None:
+        alvo.equipes_gerenciadas = body.equipes_gerenciadas
     if body.turno is not None:
         alvo.turno = body.turno
     if body.escala_tipo is not None:
@@ -88,46 +109,23 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
         alvo.horario_inicio = body.horario_inicio
     if body.horario_fim is not None:
         alvo.horario_fim = body.horario_fim
+    if body.data_admissao is not None:
+        alvo.data_admissao = body.data_admissao
+    if body.data_aniversario is not None:
+        alvo.data_aniversario = body.data_aniversario
 
     db.commit()
     db.refresh(alvo)
-    log_action(db, request, admin, "atualizar_colaborador", "colaborador", alvo.id, {"motivo": body.motivo, "role": body.role})
-    return alvo
-
-
-@router.post("/{colaborador_id}/resetar-senha", response_model=ColaboradorOut)
-def resetar_senha(colaborador_id: str, body: ResetarSenhaIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Define uma nova senha provisória pro colaborador (ele precisa trocar no
-    próximo login) e já libera qualquer bloqueio por tentativas erradas."""
-    alvo = db.get(Colaborador, colaborador_id)
-    if not alvo:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
-    alvo.password_hash = hash_password(body.nova_senha)
-    alvo.must_change_password = True
-    alvo.failed_attempts = 0
-    alvo.locked_until = None
-    db.commit()
-    db.refresh(alvo)
-    log_action(db, request, admin, "resetar_senha", "colaborador", alvo.id)
-    return alvo
-
-
-@router.post("/{colaborador_id}/desbloquear", response_model=ColaboradorOut)
-def desbloquear(colaborador_id: str, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Libera o bloqueio por tentativas de login erradas, sem mexer na senha."""
-    alvo = db.get(Colaborador, colaborador_id)
-    if not alvo:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
-    alvo.failed_attempts = 0
-    alvo.locked_until = None
-    db.commit()
-    db.refresh(alvo)
-    log_action(db, request, admin, "desbloquear_colaborador", "colaborador", alvo.id)
+    log_action(db, request, user, "atualizar_colaborador", "colaborador", alvo.id, {"motivo": body.motivo, "role": body.role})
     return alvo
 
 
 @router.get("/{colaborador_id}/historico-equipe", response_model=list[HistoricoEquipeOut])
-def historico_equipe(colaborador_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(require_leitura_ampla)):
+def historico_equipe(colaborador_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    if user.role == "supervisor":
+        alvo = db.get(Colaborador, colaborador_id)
+        if alvo:
+            check_escopo_equipe(user, alvo.equipe)
     return (
         db.query(HistoricoEquipe)
         .filter(HistoricoEquipe.colaborador_id == colaborador_id)
@@ -137,14 +135,17 @@ def historico_equipe(colaborador_id: str, db: Session = Depends(get_db), user: C
 
 
 @router.post("/{colaborador_id}/desligar", response_model=ColaboradorOut)
-def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
     """Desligamento é sempre um soft-delete: o colaborador vira 'inativo' e some
     das listas de cadastro/atribuição automática, mas todo o histórico dele
-    (plantões, folgas, atestados, férias já registrados) continua intacto para
-    relatórios e auditoria — nada é apagado."""
+    continua intacto para relatórios e auditoria — nada é apagado."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    if user.role == "supervisor":
+        check_escopo_equipe(user, alvo.equipe)
+        if alvo.role != "colaborador":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Supervisor só pode desligar colaboradores comuns.")
     if alvo.role == "admin":
         outros_admins = db.query(Colaborador).filter(Colaborador.role == "admin", Colaborador.status == "ativo", Colaborador.id != alvo.id).count()
         if outros_admins == 0:
@@ -163,7 +164,7 @@ def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Sessio
         .all()
     )
 
-    log_action(db, request, admin, "desligar_colaborador", "colaborador", alvo.id, {
+    log_action(db, request, user, "desligar_colaborador", "colaborador", alvo.id, {
         "motivo": body.motivo,
         "plantoes_futuros_pendentes": len(plantoes_futuros),
     })
@@ -172,7 +173,11 @@ def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Sessio
 
 
 @router.get("/{colaborador_id}/pendencias-desligamento")
-def pendencias_desligamento(colaborador_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(require_leitura_ampla)):
+def pendencias_desligamento(colaborador_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    if user.role == "supervisor":
+        alvo = db.get(Colaborador, colaborador_id)
+        if alvo:
+            check_escopo_equipe(user, alvo.equipe)
     plantoes_futuros = (
         db.query(Plantao)
         .filter(Plantao.colaborador_id == colaborador_id, Plantao.data >= date.today())
@@ -197,13 +202,47 @@ def pendencias_desligamento(colaborador_id: str, db: Session = Depends(get_db), 
 
 
 @router.post("/{colaborador_id}/reativar", response_model=ColaboradorOut)
-def reativar(colaborador_id: str, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def reativar(colaborador_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    if user.role == "supervisor":
+        check_escopo_equipe(user, alvo.equipe)
     alvo.status = "ativo"
     alvo.data_desligamento = None
     alvo.motivo_desligamento = None
     db.commit()
-    log_action(db, request, admin, "reativar_colaborador", "colaborador", alvo.id)
+    log_action(db, request, user, "reativar_colaborador", "colaborador", alvo.id)
+    return alvo
+
+
+@router.post("/{colaborador_id}/resetar-senha", response_model=ColaboradorOut)
+def resetar_senha(colaborador_id: str, body: ResetarSenhaIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    alvo = db.get(Colaborador, colaborador_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    if user.role == "supervisor":
+        check_escopo_equipe(user, alvo.equipe)
+    alvo.password_hash = hash_password(body.nova_senha)
+    alvo.must_change_password = True
+    alvo.failed_attempts = 0
+    alvo.locked_until = None
+    db.commit()
+    db.refresh(alvo)
+    log_action(db, request, user, "resetar_senha", "colaborador", alvo.id)
+    return alvo
+
+
+@router.post("/{colaborador_id}/desbloquear", response_model=ColaboradorOut)
+def desbloquear(colaborador_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    alvo = db.get(Colaborador, colaborador_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    if user.role == "supervisor":
+        check_escopo_equipe(user, alvo.equipe)
+    alvo.failed_attempts = 0
+    alvo.locked_until = None
+    db.commit()
+    db.refresh(alvo)
+    log_action(db, request, user, "desbloquear_colaborador", "colaborador", alvo.id)
     return alvo

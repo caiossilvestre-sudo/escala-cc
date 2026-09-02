@@ -72,7 +72,7 @@ export default function Dashboard({ onNavigate }) {
   const loading = colaboradores.loading || plantoes.loading || solicitacoes.loading || atestados.loading || ferias.loading || feriados.loading;
   const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error || feriados.error;
 
-  const equipesDisponiveis = Array.from(new Set(colaboradores.data.map((c) => c.equipe))).filter(Boolean);
+  const equipesDisponiveis = Array.from(new Set(colaboradores.data.filter((c) => c.role === "colaborador" || c.role === "supervisor").map((c) => c.equipe))).filter(Boolean);
   const colaboradorPorId = Object.fromEntries(colaboradores.data.map((c) => [c.id, c]));
   const nome = (id) => colaboradorPorId[id]?.nome || "—";
   const equipeDe = (id) => colaboradorPorId[id]?.equipe || "—";

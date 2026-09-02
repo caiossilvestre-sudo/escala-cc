@@ -43,11 +43,14 @@ class ColaboradorIn(BaseModel):
     email: EmailStr
     role: RoleType = "colaborador"
     equipe: str
+    equipes_gerenciadas: Optional[list[str]] = None
     turno: str = "Manhã"
     escala_tipo: str = "6x2"
     horario_inicio: str = Field(pattern=r"^\d{2}:\d{2}$")
     horario_fim: str = Field(pattern=r"^\d{2}:\d{2}$")
     senha_inicial: str = Field(min_length=10, max_length=200)
+    data_admissao: Optional[date] = None
+    data_aniversario: Optional[date] = None
 
 
 class ColaboradorOut(BaseModel):
@@ -56,12 +59,15 @@ class ColaboradorOut(BaseModel):
     email: EmailStr
     role: str
     equipe: str
+    equipes_gerenciadas: Optional[list[str]] = None
     turno: str
     escala_tipo: str
     horario_inicio: str
     horario_fim: str
     status: str
     data_desligamento: Optional[date] = None
+    data_admissao: Optional[date] = None
+    data_aniversario: Optional[date] = None
     locked_until: Optional[datetime] = None
     failed_attempts: int = 0
 
@@ -79,10 +85,13 @@ class ColaboradorUpdateIn(BaseModel):
     nome: Optional[str] = Field(default=None, min_length=2, max_length=120)
     role: Optional[RoleType] = None
     equipe: Optional[str] = None
+    equipes_gerenciadas: Optional[list[str]] = None
     turno: Optional[str] = None
     escala_tipo: Optional[str] = None
     horario_inicio: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     horario_fim: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    data_admissao: Optional[date] = None
+    data_aniversario: Optional[date] = None
     motivo: str = Field(min_length=3, max_length=300)
 
 
@@ -153,7 +162,9 @@ TipoFolga = Literal["folga_plantao", "folga_sindicato"]
 class SolicitacaoIn(BaseModel):
     tipo: TipoFolga
     plantao_id: Optional[str] = None
+    data_plantao: Optional[date] = None  # alternativa ao plantao_id: informa a data em que o plantão foi feito
     data_solicitada: date
+    colaborador_id: Optional[str] = None  # só admin/supervisor preenchem, pra registrar em nome de alguém
     ignorar_aviso: bool = False
 
 
@@ -237,6 +248,32 @@ class FeriadoOut(BaseModel):
     trabalha: bool
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------- configuração ---
+
+class ConfiguracaoIn(BaseModel):
+    valor: str = Field(min_length=1, max_length=1000)
+
+
+class ConfiguracaoOut(BaseModel):
+    chave: str
+    valor: str
+    model_config = {"from_attributes": True}
+
+
+class CotaSindicatoOut(BaseModel):
+    nome: str
+    usada: bool
+    solicitacao_id: Optional[str] = None
+    status: Optional[str] = None
+
+
+class ResumoCotasSindicatoOut(BaseModel):
+    ciclo: int
+    total_usadas: int
+    total_disponivel: int
+    cotas: list[CotaSindicatoOut]
 
 
 # ---------------------------------------------------------------- aviso ---

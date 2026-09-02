@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_colaborador, log_action, require_admin
-from app.db.models import Aviso, Colaborador, Plantao, SolicitacaoFolga
+from app.db.models import Aviso, Colaborador, Configuracao, Plantao, SolicitacaoFolga
 from app.db.session import get_db
+from app.logic import prazo_folga_plantao
 from app.schemas import AvisoOut
 
 router = APIRouter(prefix="/avisos", tags=["avisos"])
@@ -30,11 +31,16 @@ def marcar_lido(aviso_id: str, db: Session = Depends(get_db), user: Colaborador 
 
 
 @router.post("/gerar")
-def gerar(data_ref: date_type, request: Request, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
+def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
     """Roda as 3 regras (lista mensal dia 1, aviso semanal de segunda, cobrança
-    de folga 6 dias após o plantão) para a data informada. Em produção, chame
-    esse endpoint uma vez por dia via um agendador (cron / GitHub Actions
-    scheduled workflow / APScheduler) em vez de disparar manualmente."""
+    de folga 6 dias após o plantão) para a data informada.
+
+    Com forcar=True, ignora a checagem de "já foi avisado" e gera de novo mesmo
+    que já exista um aviso equivalente — útil pra reenviar manualmente (ex:
+    esqueceu de rodar no dia 1, ou quer reforçar o aviso pra alguém).
+    Em produção, chame esse endpoint uma vez por dia via um agendador (cron /
+    GitHub Actions agendado / APScheduler) em vez de disparar manualmente.
+    """
     novos = []
     colaboradores = db.query(Colaborador).filter(Colaborador.status == "ativo").all()
 
@@ -42,7 +48,7 @@ def gerar(data_ref: date_type, request: Request, db: Session = Depends(get_db), 
         for c in colaboradores:
             ja_existe = db.query(Aviso).filter(Aviso.colaborador_id == c.id, Aviso.tipo == "mensal", Aviso.data == data_ref).first()
             plantoes_mes = db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data >= data_ref.replace(day=1)).filter(Plantao.data < (data_ref.replace(day=28) + timedelta(days=4)).replace(day=1)).all()
-            if not ja_existe and plantoes_mes:
+            if (forcar or not ja_existe) and plantoes_mes:
                 novos.append(Aviso(colaborador_id=c.id, tipo="mensal", data=data_ref, canais=["painel"],
                                     mensagem=f"Você tem {len(plantoes_mes)} plantão(ões) este mês."))
 
@@ -51,22 +57,33 @@ def gerar(data_ref: date_type, request: Request, db: Session = Depends(get_db), 
         for c in colaboradores:
             ja_existe = db.query(Aviso).filter(Aviso.colaborador_id == c.id, Aviso.tipo == "semanal", Aviso.data == data_ref).first()
             plantoes_semana = db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data >= data_ref, Plantao.data <= semana_fim).all()
-            if not ja_existe and plantoes_semana:
+            if (forcar or not ja_existe) and plantoes_semana:
                 novos.append(Aviso(colaborador_id=c.id, tipo="semanal", data=data_ref, canais=["painel"],
                                     mensagem=f"Esta semana você tem {len(plantoes_semana)} plantão(ões)."))
 
     plantoes_todos = db.query(Plantao).all()
     for p in plantoes_todos:
-        prazo = p.data + timedelta(days=6)
+        prazo = prazo_folga_plantao(db, p.data)
         if data_ref > prazo:
             tem_solicitacao = db.query(SolicitacaoFolga).filter(SolicitacaoFolga.plantao_id == p.id, SolicitacaoFolga.status != "rejeitada").first()
             ja_avisado = db.query(Aviso).filter(Aviso.tipo == "cobranca", Aviso.colaborador_id == p.colaborador_id, Aviso.data == data_ref).first()
-            if not tem_solicitacao and not ja_avisado:
+            if not tem_solicitacao and (forcar or not ja_avisado):
                 novos.append(Aviso(colaborador_id=p.colaborador_id, tipo="cobranca", data=data_ref, canais=["painel"],
                                     mensagem=f"Pendente: agende a folga do plantão de {p.data.strftime('%d/%m/%Y')} (prazo era {prazo.strftime('%d/%m/%Y')})."))
+
+    # Aniversário — usa a mensagem editável em Configuracao (ou o padrão, se
+    # o admin ainda não personalizou).
+    modelo_mensagem = db.get(Configuracao, "mensagem_aniversario")
+    texto_modelo = modelo_mensagem.valor if modelo_mensagem else "🎉 Feliz aniversário, {nome}! Toda a equipe deseja um dia incrível. 🎂"
+    for c in colaboradores:
+        if c.data_aniversario and c.data_aniversario.month == data_ref.month and c.data_aniversario.day == data_ref.day:
+            ja_avisado = db.query(Aviso).filter(Aviso.tipo == "aniversario", Aviso.colaborador_id == c.id, Aviso.data == data_ref).first()
+            if forcar or not ja_avisado:
+                novos.append(Aviso(colaborador_id=c.id, tipo="aniversario", data=data_ref, canais=["painel"],
+                                    mensagem=texto_modelo.replace("{nome}", c.nome.split(" ")[0])))
 
     for n in novos:
         db.add(n)
     db.commit()
-    log_action(db, request, admin, "gerar_avisos", "aviso", None, {"quantidade": len(novos)})
+    log_action(db, request, admin, "gerar_avisos", "aviso", None, {"quantidade": len(novos), "forcar": forcar})
     return {"gerados": len(novos)}

@@ -1,11 +1,106 @@
-"""Regras de negócio da escala — porte do protótipo (mesma lógica, agora em
-Python/servidor, para que a validação não dependa do que roda no navegador."""
 import calendar
 from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Atestado, Colaborador, Ferias, Plantao, SolicitacaoFolga
+from app.db.models import Atestado, Colaborador, Feriado, Ferias, Plantao, SolicitacaoFolga
+
+
+# --- Cotas de folga do sindicato: 4 por ano, cada uma numa janela própria ---
+# "Maio" abre a partir de 01/mai e pode ser usada até 31/ago; "Agosto" abre em
+# 01/ago (ainda dentro da janela de Maio) e vale até 31/out; e assim por
+# diante. "Dezembro" cruza o ano civil (vai até fevereiro do ano seguinte).
+COTAS_SINDICATO = [
+    {"nome": "Maio", "mes_ini": 5, "dia_ini": 1, "mes_fim": 8, "dia_fim": 31},
+    {"nome": "Agosto", "mes_ini": 8, "dia_ini": 1, "mes_fim": 10, "dia_fim": 31},
+    {"nome": "Outubro", "mes_ini": 10, "dia_ini": 1, "mes_fim": 11, "dia_fim": 30},
+    {"nome": "Dezembro", "mes_ini": 12, "dia_ini": 1, "mes_fim": 2, "dia_fim": 28},
+]
+
+
+def _ultimo_dia_mes(ano: int, mes: int, dia_sugerido: int) -> int:
+    return min(dia_sugerido, calendar.monthrange(ano, mes)[1])
+
+
+def identificar_cota_sindicato(data_alvo: date) -> dict | None:
+    """Descobre em qual das 4 janelas do 'ano sindical' uma data cai.
+    Retorna None se a data estiver fora de qualquer janela (ex: março/abril)."""
+    for cota in COTAS_SINDICATO:
+        cruza_ano = cota["mes_fim"] < cota["mes_ini"]
+        if not cruza_ano:
+            ini = date(data_alvo.year, cota["mes_ini"], cota["dia_ini"])
+            fim = date(data_alvo.year, cota["mes_fim"], _ultimo_dia_mes(data_alvo.year, cota["mes_fim"], cota["dia_fim"]))
+            if ini <= data_alvo <= fim:
+                return {"nome": cota["nome"], "ciclo": data_alvo.year, "inicio": ini, "fim": fim}
+        else:
+            # pode estar na parte que começa neste ano (dez deste ano -> fev do próximo)
+            ini = date(data_alvo.year, cota["mes_ini"], cota["dia_ini"])
+            fim = date(data_alvo.year + 1, cota["mes_fim"], _ultimo_dia_mes(data_alvo.year + 1, cota["mes_fim"], cota["dia_fim"]))
+            if ini <= data_alvo <= fim:
+                return {"nome": cota["nome"], "ciclo": data_alvo.year, "inicio": ini, "fim": fim}
+            # ou na parte que começou no ano anterior (dez do ano passado -> fev deste ano)
+            ini2 = date(data_alvo.year - 1, cota["mes_ini"], cota["dia_ini"])
+            fim2 = date(data_alvo.year, cota["mes_fim"], _ultimo_dia_mes(data_alvo.year, cota["mes_fim"], cota["dia_fim"]))
+            if ini2 <= data_alvo <= fim2:
+                return {"nome": cota["nome"], "ciclo": data_alvo.year - 1, "inicio": ini2, "fim": fim2}
+    return None
+
+
+def ciclo_sindicato_atual(hoje: date | None = None) -> int:
+    hoje = hoje or date.today()
+    return hoje.year - 1 if hoje.month in (1, 2) else hoje.year
+
+
+def resumo_cotas_sindicato(db: Session, colaborador_id: str, ciclo: int | None = None) -> dict:
+    """Quantas das 4 folgas sindicais desse ciclo já foram usadas (pedidas,
+    aprovadas ou pendentes — só rejeitada não conta)."""
+    ciclo = ciclo if ciclo is not None else ciclo_sindicato_atual()
+    solicitacoes = (
+        db.query(SolicitacaoFolga)
+        .filter(SolicitacaoFolga.colaborador_id == colaborador_id, SolicitacaoFolga.tipo == "folga_sindicato", SolicitacaoFolga.status != "rejeitada")
+        .all()
+    )
+    usadas_por_cota = {}
+    for s in solicitacoes:
+        cota = identificar_cota_sindicato(s.data_solicitada)
+        if cota and cota["ciclo"] == ciclo:
+            usadas_por_cota[cota["nome"]] = s
+
+    cotas_info = []
+    for cota in COTAS_SINDICATO:
+        uso = usadas_por_cota.get(cota["nome"])
+        cotas_info.append({
+            "nome": cota["nome"],
+            "usada": uso is not None,
+            "solicitacao_id": uso.id if uso else None,
+            "status": uso.status if uso else None,
+        })
+    return {"ciclo": ciclo, "total_usadas": len(usadas_por_cota), "total_disponivel": len(COTAS_SINDICATO), "cotas": cotas_info}
+
+
+# --- Prazo de folga de plantão: 6 dias corridos, ou até o domingo da semana
+# seguinte se o plantão foi realizado num feriado ---
+
+def _domingo_da_semana(d: date) -> date:
+    return d + timedelta(days=(6 - d.weekday()))
+
+
+def prazo_folga_plantao(db: Session, data_plantao: date) -> date:
+    feriado = db.query(Feriado).filter(Feriado.data == data_plantao).first()
+    if feriado:
+        domingo_atual = _domingo_da_semana(data_plantao)
+        return domingo_atual + timedelta(days=7)  # domingo da semana seguinte
+    return data_plantao + timedelta(days=6)
+
+
+def dia_util_para_folga(db: Session, data_alvo: date) -> tuple[bool, str]:
+    """Domingo e feriado não são dias úteis pra agendar uma folga."""
+    if data_alvo.weekday() == 6:
+        return False, "Não é possível agendar folga num domingo."
+    feriado = db.query(Feriado).filter(Feriado.data == data_alvo).first()
+    if feriado:
+        return False, f"Não é possível agendar folga num feriado ({feriado.nome})."
+    return True, ""
 
 
 def times_overlap(a_ini: str, a_fim: str, b_ini: str, b_fim: str) -> bool:
@@ -29,7 +124,7 @@ def domingos_no_mes(mes: str) -> list[date]:
     out = []
     for dia in range(1, total_dias + 1):
         d = date(ano, mes_num, dia)
-        if d.weekday() == 6:  # Python: segunda=0 ... domingo=6
+        if d.weekday() == 6:
             out.append(d)
     return out
 

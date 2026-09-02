@@ -33,6 +33,7 @@ const NAV_ADMIN = [
 const NAV_SUPERVISOR = [
   { id: "dashboard", label: "Dashboard" },
   { id: "cronograma", label: "Cronograma" },
+  { id: "colaboradores", label: "Colaboradores" },
   { id: "plantoes", label: "Plantões" },
   { id: "aprovacoes", label: "Aprovações" },
   { id: "ferias", label: "Férias" },
@@ -90,7 +91,7 @@ function Shell() {
         <div className="nav-footnote">
           {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
           {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
-          {isSupervisor && "Você cadastra plantões, aprova folgas, férias e atestados — só do seu próprio setor."}
+          {isSupervisor && `Você gerencia colaboradores, plantões, folgas, férias e atestados — só ${user.equipes_gerenciadas?.length > 1 ? `dos setores: ${user.equipes_gerenciadas.join(", ")}` : `do seu setor (${user.equipe})`}.`}
           {!isAdmin && !isViewer && !isSupervisor && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
         </div>
       </aside>
@@ -103,7 +104,7 @@ function Shell() {
         )}
         {isSupervisor && (
           <div style={{ background: "#F0F4FF", borderBottom: "1px solid #DCE1FB", padding: "8px 26px", fontSize: 12, color: "#2A4FA0", display: "flex", alignItems: "center", gap: 6 }}>
-            🧭 Acesso de supervisor — as ações valem só para o setor {user.equipe}.
+            🧭 Acesso de supervisor — as ações valem só para {user.equipes_gerenciadas?.length > 1 ? `os setores ${user.equipes_gerenciadas.join(", ")}` : `o setor ${user.equipe}`}.
           </div>
         )}
         {/* fieldset desabilita todo input/select/textarea/button descendente de uma vez,
@@ -111,7 +112,7 @@ function Shell() {
         <fieldset disabled={isViewer} style={{ border: "none", margin: 0, padding: 0 }}>
           {activeTab === "dashboard" && (showAdminPages || isSupervisor) && <Dashboard onNavigate={setTab} />}
           {activeTab === "cronograma" && (showAdminPages || isSupervisor) && <CronogramaAdmin />}
-          {activeTab === "colaboradores" && showAdminPages && <Colaboradores />}
+          {activeTab === "colaboradores" && (showAdminPages || isSupervisor) && <Colaboradores user={user} />}
           {activeTab === "plantoes" && (showAdminPages || isSupervisor) && <Plantoes />}
           {activeTab === "feriados" && showAdminPages && <Feriados />}
           {activeTab === "aprovacoes" && (showAdminPages || isSupervisor) && <Aprovacoes />}
