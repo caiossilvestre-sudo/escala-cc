@@ -11,9 +11,23 @@ from app.schemas import AvisoOut
 
 router = APIRouter(prefix="/avisos", tags=["avisos"])
 
+VEZES_PARA_CONSIDERAR_LIDO = 3  # mostrado 3x sem a pessoa marcar como lido = considera lido sozinho
+
+MENSAGENS_PADRAO = {
+    "mensagem_aniversario": "🎉 Feliz aniversário, {nome}! Toda a equipe deseja um dia incrível. 🎂",
+    "mensagem_aniversario_trabalho": "🎊 Parabéns pelos {anos} ano(s) de casa, {nome}! Obrigado pela dedicação todos esses anos.",
+}
+
+
+def _mensagem_configurada(db: Session, chave: str) -> str:
+    cfg = db.get(Configuracao, chave)
+    return cfg.valor if cfg else MENSAGENS_PADRAO.get(chave, "")
+
 
 @router.get("", response_model=list[AvisoOut])
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
+    """Admin vê todos os avisos (pra acompanhar quem leu o quê). Todo mundo
+    mais só vê os próprios."""
     q = db.query(Aviso)
     if user.role != "admin":
         q = q.filter(Aviso.colaborador_id == user.id)
@@ -30,16 +44,30 @@ def marcar_lido(aviso_id: str, db: Session = Depends(get_db), user: Colaborador 
     return alvo
 
 
+@router.post("/{aviso_id}/marcar-exibido", response_model=AvisoOut)
+def marcar_exibido(aviso_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
+    """Chamado pelo popup toda vez que o aviso é de fato mostrado pra pessoa.
+    Depois de mostrado 3 vezes sem a pessoa marcar como lido manualmente, o
+    sistema considera lido sozinho e para de mostrar de novo."""
+    alvo = db.get(Aviso, aviso_id)
+    if not alvo or alvo.colaborador_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Aviso não encontrado.")
+    alvo.vezes_mostrado = (alvo.vezes_mostrado or 0) + 1
+    if alvo.vezes_mostrado >= VEZES_PARA_CONSIDERAR_LIDO:
+        alvo.lido = True
+    db.commit()
+    db.refresh(alvo)
+    return alvo
+
+
 @router.post("/gerar")
 def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
-    """Roda as 3 regras (lista mensal dia 1, aviso semanal de segunda, cobrança
-    de folga 6 dias após o plantão) para a data informada.
+    """Roda as regras diárias: lista mensal (dia 1), aviso semanal (segunda),
+    cobrança de folga, aniversário natalício e aniversário de empresa.
 
     Com forcar=True, ignora a checagem de "já foi avisado" e gera de novo mesmo
-    que já exista um aviso equivalente — útil pra reenviar manualmente (ex:
-    esqueceu de rodar no dia 1, ou quer reforçar o aviso pra alguém).
-    Em produção, chame esse endpoint uma vez por dia via um agendador (cron /
-    GitHub Actions agendado / APScheduler) em vez de disparar manualmente.
+    que já exista um aviso equivalente. Em produção, chame esse endpoint uma
+    vez por dia via um agendador (cron / GitHub Actions / APScheduler).
     """
     novos = []
     colaboradores = db.query(Colaborador).filter(Colaborador.status == "ativo").all()
@@ -71,16 +99,25 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
                 novos.append(Aviso(colaborador_id=p.colaborador_id, tipo="cobranca", data=data_ref, canais=["painel"],
                                     mensagem=f"Pendente: agende a folga do plantão de {p.data.strftime('%d/%m/%Y')} (prazo era {prazo.strftime('%d/%m/%Y')})."))
 
-    # Aniversário — usa a mensagem editável em Configuracao (ou o padrão, se
-    # o admin ainda não personalizou).
-    modelo_mensagem = db.get(Configuracao, "mensagem_aniversario")
-    texto_modelo = modelo_mensagem.valor if modelo_mensagem else "🎉 Feliz aniversário, {nome}! Toda a equipe deseja um dia incrível. 🎂"
+    # Aniversário natalício
+    texto_aniversario = _mensagem_configurada(db, "mensagem_aniversario")
     for c in colaboradores:
         if c.data_aniversario and c.data_aniversario.month == data_ref.month and c.data_aniversario.day == data_ref.day:
             ja_avisado = db.query(Aviso).filter(Aviso.tipo == "aniversario", Aviso.colaborador_id == c.id, Aviso.data == data_ref).first()
             if forcar or not ja_avisado:
                 novos.append(Aviso(colaborador_id=c.id, tipo="aniversario", data=data_ref, canais=["painel"],
-                                    mensagem=texto_modelo.replace("{nome}", c.nome.split(" ")[0])))
+                                    mensagem=texto_aniversario.replace("{nome}", c.nome.split(" ")[0])))
+
+    # Aniversário de empresa (tempo de casa) — só a partir de 1 ano completo
+    texto_trabalho = _mensagem_configurada(db, "mensagem_aniversario_trabalho")
+    for c in colaboradores:
+        if c.data_admissao and c.data_admissao.month == data_ref.month and c.data_admissao.day == data_ref.day:
+            anos = data_ref.year - c.data_admissao.year
+            if anos >= 1:
+                ja_avisado = db.query(Aviso).filter(Aviso.tipo == "aniversario_trabalho", Aviso.colaborador_id == c.id, Aviso.data == data_ref).first()
+                if forcar or not ja_avisado:
+                    texto = texto_trabalho.replace("{nome}", c.nome.split(" ")[0]).replace("{anos}", str(anos))
+                    novos.append(Aviso(colaborador_id=c.id, tipo="aniversario_trabalho", data=data_ref, canais=["painel"], mensagem=texto))
 
     for n in novos:
         db.add(n)

@@ -286,5 +286,6 @@ class AvisoOut(BaseModel):
     data: date
     canais: list[str]
     lido: bool
+    vezes_mostrado: int = 0
 
     model_config = {"from_attributes": True}

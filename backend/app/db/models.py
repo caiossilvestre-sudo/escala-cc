@@ -135,6 +135,7 @@ class Aviso(Base):
     data = Column(Date, nullable=False)
     canais = Column(JSON, nullable=False, default=list)
     lido = Column(Boolean, nullable=False, default=False)
+    vezes_mostrado = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

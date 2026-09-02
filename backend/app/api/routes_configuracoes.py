@@ -12,6 +12,7 @@ router = APIRouter(prefix="/configuracoes", tags=["configuracoes"])
 # {nome} é substituído pelo nome do colaborador na hora de exibir.
 VALORES_PADRAO = {
     "mensagem_aniversario": "🎉 Feliz aniversário, {nome}! Toda a equipe deseja um dia incrível. 🎂",
+    "mensagem_aniversario_trabalho": "🎊 Parabéns pelos {anos} ano(s) de casa, {nome}! Obrigado pela dedicação todos esses anos.",
 }
 
 
@@ -23,7 +24,7 @@ def obter(chave: str, db: Session = Depends(get_db), user: Colaborador = Depends
     return ConfiguracaoOut(chave=chave, valor=VALORES_PADRAO.get(chave, ""))
 
 
-@router.put("/{chave}", response_model=ConfiguracaoOut)
+@router.patch("/{chave}", response_model=ConfiguracaoOut)
 def salvar(chave: str, body: ConfiguracaoIn, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
     cfg = db.get(Configuracao, chave)
     if cfg:

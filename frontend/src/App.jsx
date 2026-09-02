@@ -52,7 +52,7 @@ const NAV_COLAB = [
 ];
 
 const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador" };
-const TIPO_ICONE = { aniversario: "🎉", mensal: "📅", semanal: "📌", cobranca: "⏰" };
+const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰" };
 
 /** Mostra os avisos ainda não lidos assim que a pessoa loga — em vez de ela
  * precisar lembrar de abrir a aba "Avisos". Fica fora do <fieldset> pra
@@ -68,10 +68,18 @@ function AvisosPopup({ userId }) {
     let cancelado = false;
     api.get("/avisos").then((lista) => {
       if (cancelado) return;
-      const naoLidos = (lista || []).filter((a) => !a.lido);
-      if (naoLidos.length > 0) {
-        setAvisos(naoLidos);
+      // Importante: admin recebe TODOS os avisos nessa rota (pra gerenciar em
+      // Avisos), mas o popup é sobre "avisos que EU preciso ler" — então
+      // filtra sempre pelo próprio id, senão o admin veria (e marcaria como
+      // lido) o aviso de outra pessoa sem ela nunca ter visto de verdade.
+      const meusNaoLidos = (lista || []).filter((a) => a.colaborador_id === userId && !a.lido);
+      if (meusNaoLidos.length > 0) {
+        setAvisos(meusNaoLidos);
         setMostrar(true);
+        // Cada aviso que efetivamente aparece aqui conta como "1 exibição" —
+        // depois de 3 exibições sem a pessoa marcar como lido manualmente, o
+        // sistema considera lido sozinho e para de mostrar.
+        meusNaoLidos.forEach((a) => { api.post(`/avisos/${a.id}/marcar-exibido`).catch(() => {}); });
       }
     }).catch(() => {});
     return () => { cancelado = true; };
