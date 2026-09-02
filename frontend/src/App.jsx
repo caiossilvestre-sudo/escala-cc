@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { useIdleLogout } from "./lib/hooks";
+import { api } from "./api/client";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import CronogramaAdmin from "./pages/CronogramaAdmin";
@@ -28,8 +29,8 @@ const NAV_ADMIN = [
   { id: "avisos", label: "Avisos" },
   { id: "senha", label: "Trocar senha" },
 ];
-// Supervisor: só o operacional do próprio setor. Sem Colaboradores (contas),
-// sem Feriados (política da empresa inteira) e sem Avisos (rotina global).
+// Supervisor: só o operacional do próprio setor. Sem Feriados (política da
+// empresa inteira) e sem a aba de Avisos administrativa (rotina global).
 const NAV_SUPERVISOR = [
   { id: "dashboard", label: "Dashboard" },
   { id: "cronograma", label: "Cronograma" },
@@ -51,6 +52,63 @@ const NAV_COLAB = [
 ];
 
 const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador" };
+const TIPO_ICONE = { aniversario: "🎉", mensal: "📅", semanal: "📌", cobranca: "⏰" };
+
+/** Mostra os avisos ainda não lidos assim que a pessoa loga — em vez de ela
+ * precisar lembrar de abrir a aba "Avisos". Fica fora do <fieldset> pra
+ * funcionar mesmo pro visualizador (marcar como lido é uma ação inofensiva,
+ * não uma edição de dado operacional). */
+function AvisosPopup({ userId }) {
+  const [avisos, setAvisos] = useState([]);
+  const [mostrar, setMostrar] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelado = false;
+    api.get("/avisos").then((lista) => {
+      if (cancelado) return;
+      const naoLidos = (lista || []).filter((a) => !a.lido);
+      if (naoLidos.length > 0) {
+        setAvisos(naoLidos);
+        setMostrar(true);
+      }
+    }).catch(() => {});
+    return () => { cancelado = true; };
+  }, [userId]);
+
+  if (!mostrar || avisos.length === 0) return null;
+
+  const marcarTodosLidos = async () => {
+    setEnviando(true);
+    for (const a of avisos) {
+      try { await api.post(`/avisos/${a.id}/marcar-lido`); } catch (e) { /* segue mesmo se uma falhar */ }
+    }
+    setEnviando(false);
+    setMostrar(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(20,22,28,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 22, maxWidth: 440, width: "100%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.25)" }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>
+          {avisos.length === 1 ? "Você tem 1 aviso novo" : `Você tem ${avisos.length} avisos novos`}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "14px 0" }}>
+          {avisos.map((a) => (
+            <div key={a.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, background: a.tipo === "aniversario" ? "#FFF7F0" : "#FAFBFC" }}>
+              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{TIPO_ICONE[a.tipo] || "🔔"} {a.mensagem}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={() => setMostrar(false)}>Ver depois</button>
+          <button className="btn btn-primary" disabled={enviando} onClick={marcarTodosLidos}>Marcar como lidos</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Shell() {
   const { user, loading, logout } = useAuth();
@@ -73,6 +131,7 @@ function Shell() {
 
   return (
     <div className="app-shell">
+      <AvisosPopup userId={user.colaborador_id} />
       <aside className="sidebar">
         <div className="sidebar-logo">
           <div className="mark">EC</div>
