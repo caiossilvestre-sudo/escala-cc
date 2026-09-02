@@ -142,7 +142,7 @@ function Shell() {
       <AvisosPopup userId={user.colaborador_id} />
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div className="mark">EC</div>
+          <div className="mark">ST</div>
           <div><div className="name display">Escala Suporte Técnico</div><div className="sub">Sistema de escalas</div></div>
         </div>
         <div className="sidebar-user">
