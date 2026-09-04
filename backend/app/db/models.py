@@ -140,6 +140,8 @@ class Aviso(Base):
     vezes_mostrado = Column(Integer, nullable=False, default=0)
     email_enviado = Column(Boolean, nullable=True)  # None = nunca tentou, True/False = tentou e o resultado
     email_erro = Column(Text, nullable=True)
+    teams_enviado = Column(Boolean, nullable=True)
+    teams_erro = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

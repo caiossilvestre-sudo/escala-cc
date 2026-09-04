@@ -120,6 +120,18 @@ export function AvisosAdmin() {
                     </div>
                   </div>
                   <div style={{ fontSize: 12.5, marginTop: 4, whiteSpace: "pre-line" }}>{a.mensagem}</div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                    {a.email_enviado !== null && a.email_enviado !== undefined && (
+                      <span style={{ fontSize: 10.5, color: a.email_enviado ? "#177A50" : "#A32E42" }} title={a.email_erro || ""}>
+                        {a.email_enviado ? "✓" : "✕"} E-mail
+                      </span>
+                    )}
+                    {a.teams_enviado !== null && a.teams_enviado !== undefined && (
+                      <span style={{ fontSize: 10.5, color: a.teams_enviado ? "#177A50" : "#A32E42" }} title={a.teams_erro || ""}>
+                        {a.teams_enviado ? "✓" : "✕"} Teams
+                      </span>
+                    )}
+                  </div>
                   {a.lido && a.lido_em && (
                     <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>
                       ✓ Lido em {formatarDataHora(a.lido_em)} — {VIA_LABEL[a.lido_via] || a.lido_via}

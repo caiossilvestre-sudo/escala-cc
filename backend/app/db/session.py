@@ -33,6 +33,8 @@ def run_safe_migrations():
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS lido_via VARCHAR",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS email_enviado BOOLEAN",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS email_erro TEXT",
+        "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS teams_enviado BOOLEAN",
+        "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS teams_erro TEXT",
     ]
     with engine.begin() as conn:
         for stmt in statements:

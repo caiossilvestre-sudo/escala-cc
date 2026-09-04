@@ -23,5 +23,9 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_from_nome: str = "Escala Suporte Técnico"
 
+    # Teams via Power Automate (opcional). Se ficar vazio, o sistema não
+    # tenta mandar pro Teams — segue funcionando normal, só no painel/e-mail.
+    power_automate_webhook_url: str = ""
+
 
 settings = Settings()

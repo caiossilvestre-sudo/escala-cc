@@ -291,5 +291,7 @@ class AvisoOut(BaseModel):
     vezes_mostrado: int = 0
     email_enviado: Optional[bool] = None
     email_erro: Optional[str] = None
+    teams_enviado: Optional[bool] = None
+    teams_erro: Optional[str] = None
 
     model_config = {"from_attributes": True}
