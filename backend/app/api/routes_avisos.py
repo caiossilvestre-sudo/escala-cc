@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_colaborador, log_action, require_admin
+from app.core.email import enviar_email_aviso, smtp_configurado
 from app.db.models import Aviso, Colaborador, Configuracao, Plantao, SolicitacaoFolga
 from app.db.session import get_db
 from app.logic import prazo_folga_plantao
@@ -137,5 +138,21 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
     for n in novos:
         db.add(n)
     db.commit()
+
+    # Tenta enviar cada aviso novo por e-mail também (só se SMTP estiver
+    # configurado — senão fica só no painel, sem quebrar nada).
+    if smtp_configurado():
+        colaboradores_por_id = {c.id: c for c in colaboradores}
+        for n in novos:
+            alvo = colaboradores_por_id.get(n.colaborador_id)
+            if not alvo:
+                continue
+            sucesso, erro = enviar_email_aviso(alvo.email, n.tipo, n.mensagem)
+            n.email_enviado = sucesso
+            n.email_erro = erro
+            if sucesso and "email" not in n.canais:
+                n.canais = n.canais + ["email"]
+        db.commit()
+
     log_action(db, request, admin, "gerar_avisos", "aviso", None, {"quantidade": len(novos), "forcar": forcar})
     return {"gerados": len(novos)}

@@ -289,5 +289,7 @@ class AvisoOut(BaseModel):
     lido_em: Optional[datetime] = None
     lido_via: Optional[str] = None
     vezes_mostrado: int = 0
+    email_enviado: Optional[bool] = None
+    email_erro: Optional[str] = None
 
     model_config = {"from_attributes": True}

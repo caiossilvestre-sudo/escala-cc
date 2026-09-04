@@ -31,6 +31,8 @@ def run_safe_migrations():
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS vezes_mostrado INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS lido_em TIMESTAMP",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS lido_via VARCHAR",
+        "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS email_enviado BOOLEAN",
+        "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS email_erro TEXT",
     ]
     with engine.begin() as conn:
         for stmt in statements:
