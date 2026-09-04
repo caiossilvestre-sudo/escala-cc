@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
 import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
-import { formatBRDia, TIPO_LABEL } from "../lib/helpers";
+import { formatBR, formatBRDia, weekdayFull, TIPO_LABEL } from "../lib/helpers";
 
 function CotaBadge({ colaboradorId }) {
   const [resumo, setResumo] = useState(null);
@@ -17,9 +17,24 @@ function CotaBadge({ colaboradorId }) {
   );
 }
 
+/** Pra folga de plantão: mostra o dia do plantão em si (não só da folga),
+ * com dia da semana por extenso nos dois — o aprovador precisa saber os
+ * dois pra decidir com segurança. */
+function DetalheFolgaPlantao({ solicitacao, plantoes }) {
+  const plantao = plantoes.find((p) => p.id === solicitacao.plantao_id);
+  if (!plantao) return <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Plantão original não encontrado (pode ter sido excluído).</div>;
+  return (
+    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+      <div>📅 Plantão: <span className="mono">{formatBR(plantao.data)}</span> ({weekdayFull(plantao.data)}), das {plantao.horario_inicio} às {plantao.horario_fim}</div>
+      <div>🏖️ Folga pedida para: <span className="mono">{formatBR(solicitacao.data_solicitada)}</span> ({weekdayFull(solicitacao.data_solicitada)})</div>
+    </div>
+  );
+}
+
 export default function Aprovacoes() {
   const { data, loading, error, reload } = useApiList("/solicitacoes");
   const colaboradores = useApiList("/colaboradores");
+  const plantoes = useApiList("/plantoes");
   const { toast, showToast } = useToast();
   const [rejeitandoId, setRejeitandoId] = useState(null);
   const [motivo, setMotivo] = useState("");
@@ -61,9 +76,11 @@ export default function Aprovacoes() {
                     <div>
                       <b>{nome(s.colaborador_id)}</b>
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {TIPO_LABEL[s.tipo]} · <span className="mono">{formatBRDia(s.data_solicitada)}</span>
+                        {TIPO_LABEL[s.tipo]}
+                        {s.tipo !== "folga_plantao" && <> · <span className="mono">{formatBRDia(s.data_solicitada)}</span></>}
                         {s.tipo === "folga_sindicato" && <CotaBadge colaboradorId={s.colaborador_id} />}
                       </div>
+                      {s.tipo === "folga_plantao" && <DetalheFolgaPlantao solicitacao={s} plantoes={plantoes.data} />}
                     </div>
                     <Pill status="pendente">Pendente</Pill>
                   </div>

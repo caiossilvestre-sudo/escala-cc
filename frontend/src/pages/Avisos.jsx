@@ -5,6 +5,13 @@ import { api } from "../api/client";
 import { todayISO, formatBR } from "../lib/helpers";
 
 const TIPO_LABEL = { mensal: "Lista mensal (dia 1º)", semanal: "Aviso semanal (segunda)", cobranca: "Cobrança de folga", aniversario: "Aniversário", aniversario_trabalho: "Aniversário de empresa" };
+const VIA_LABEL = { manual: "clicou em marcar como lido", automatico: "visto 3x sem ação (marcado sozinho)" };
+
+function formatarDataHora(iso) {
+  if (!iso) return "";
+  const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 function MensagemEditavel({ chave, titulo, variaveis, showToast }) {
   const [valor, setValor] = useState("");
@@ -112,7 +119,12 @@ export function AvisosAdmin() {
                       <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatBR(a.data)}</span>
                     </div>
                   </div>
-                  <div style={{ fontSize: 12.5, marginTop: 4 }}>{a.mensagem}</div>
+                  <div style={{ fontSize: 12.5, marginTop: 4, whiteSpace: "pre-line" }}>{a.mensagem}</div>
+                  {a.lido && a.lido_em && (
+                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>
+                      ✓ Lido em {formatarDataHora(a.lido_em)} — {VIA_LABEL[a.lido_via] || a.lido_via}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -143,7 +155,7 @@ export default function PainelAvisos() {
                   <b style={{ fontSize: 12.5 }}>{TIPO_LABEL[a.tipo] || a.tipo}</b>
                   <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatBR(a.data)}</span>
                 </div>
-                <div style={{ fontSize: 12.5, marginTop: 5 }}>{a.mensagem}</div>
+                <div style={{ fontSize: 12.5, marginTop: 5, whiteSpace: "pre-line" }}>{a.mensagem}</div>
                 {!a.lido && <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => marcarLido(a.id)}>Marcar como lido</button>}
               </div>
             ))}

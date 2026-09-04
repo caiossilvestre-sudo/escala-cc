@@ -1,4 +1,4 @@
-from datetime import date as date_type, timedelta
+from datetime import date as date_type, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -40,6 +40,8 @@ def marcar_lido(aviso_id: str, db: Session = Depends(get_db), user: Colaborador 
     if not alvo or (user.role != "admin" and alvo.colaborador_id != user.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aviso não encontrado.")
     alvo.lido = True
+    alvo.lido_em = datetime.utcnow()
+    alvo.lido_via = "manual"
     db.commit()
     return alvo
 
@@ -55,9 +57,22 @@ def marcar_exibido(aviso_id: str, db: Session = Depends(get_db), user: Colaborad
     alvo.vezes_mostrado = (alvo.vezes_mostrado or 0) + 1
     if alvo.vezes_mostrado >= VEZES_PARA_CONSIDERAR_LIDO:
         alvo.lido = True
+        alvo.lido_em = datetime.utcnow()
+        alvo.lido_via = "automatico"
     db.commit()
     db.refresh(alvo)
     return alvo
+
+
+DIAS_SEMANA = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+
+
+def _listar_plantoes(plantoes: list[Plantao]) -> str:
+    linhas = []
+    for p in sorted(plantoes, key=lambda x: x.data):
+        dia_semana = DIAS_SEMANA[p.data.weekday()]
+        linhas.append(f"Dia {p.data.strftime('%d/%m')} ({dia_semana}), das {p.horario_inicio} às {p.horario_fim}")
+    return "\n".join(linhas)
 
 
 @router.post("/gerar")
@@ -78,7 +93,7 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
             plantoes_mes = db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data >= data_ref.replace(day=1)).filter(Plantao.data < (data_ref.replace(day=28) + timedelta(days=4)).replace(day=1)).all()
             if (forcar or not ja_existe) and plantoes_mes:
                 novos.append(Aviso(colaborador_id=c.id, tipo="mensal", data=data_ref, canais=["painel"],
-                                    mensagem=f"Você tem {len(plantoes_mes)} plantão(ões) este mês."))
+                                    mensagem=f"Você tem {len(plantoes_mes)} plantão(ões) este mês:\n{_listar_plantoes(plantoes_mes)}"))
 
     if data_ref.weekday() == 0:  # segunda-feira
         semana_fim = data_ref + timedelta(days=6)
@@ -87,7 +102,7 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
             plantoes_semana = db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data >= data_ref, Plantao.data <= semana_fim).all()
             if (forcar or not ja_existe) and plantoes_semana:
                 novos.append(Aviso(colaborador_id=c.id, tipo="semanal", data=data_ref, canais=["painel"],
-                                    mensagem=f"Esta semana você tem {len(plantoes_semana)} plantão(ões)."))
+                                    mensagem=f"Esta semana você tem {len(plantoes_semana)} plantão(ões):\n{_listar_plantoes(plantoes_semana)}"))
 
     plantoes_todos = db.query(Plantao).all()
     for p in plantoes_todos:
@@ -97,7 +112,7 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
             ja_avisado = db.query(Aviso).filter(Aviso.tipo == "cobranca", Aviso.colaborador_id == p.colaborador_id, Aviso.data == data_ref).first()
             if not tem_solicitacao and (forcar or not ja_avisado):
                 novos.append(Aviso(colaborador_id=p.colaborador_id, tipo="cobranca", data=data_ref, canais=["painel"],
-                                    mensagem=f"Pendente: agende a folga do plantão de {p.data.strftime('%d/%m/%Y')} (prazo era {prazo.strftime('%d/%m/%Y')})."))
+                                    mensagem=f"Pendente: agende a folga do plantão de {p.data.strftime('%d/%m/%Y')} ({DIAS_SEMANA[p.data.weekday()]}) — prazo era {prazo.strftime('%d/%m/%Y')} ({DIAS_SEMANA[prazo.weekday()]})."))
 
     # Aniversário natalício
     texto_aniversario = _mensagem_configurada(db, "mensagem_aniversario")

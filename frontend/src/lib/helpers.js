@@ -1,5 +1,9 @@
 export const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
+const WEEKDAYS_FULL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+export function weekdayFull(dateStr) {
+  return WEEKDAYS_FULL[new Date(dateStr + "T00:00:00").getDay()];
+}
 export function weekdayAbbrev(dateStr) {
   return WEEKDAYS[new Date(dateStr + "T00:00:00").getDay()];
 }
