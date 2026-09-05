@@ -144,7 +144,7 @@ export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, ates
   const feriasHit = ferias.find((f) => f.colaborador_id === colaboradorId && f.status === "aprovada" && rangeOverlapsDate(dateStr, f.data_inicio, f.data_fim));
   if (feriasHit) return { label: "FÉR", bg: "#E4E5E8", fg: "#4B4F58", title: "Férias" };
   const folga = solicitacoes.find((s) => s.colaborador_id === colaboradorId && s.status === "aprovada" && s.data_solicitada === dateStr);
-  if (folga && folga.tipo === "folga_sindicato") return { label: "F", bg: "#F6D6DA", fg: "#8A1F30", title: "Folga normal (sindicato)" };
+  if (folga && folga.tipo === "folga_sindicato") return { label: "F", bg: "#A32E42", fg: "#FFFFFF", title: "Folga normal (sindicato)" };
   if (folga) return { label: "f", bg: "#FBE3E5", fg: "#B23A4C", title: TIPO_LABEL[folga.tipo] };
   const atestado = atestados.find((a) => a.colaborador_id === colaboradorId && rangeOverlapsDate(dateStr, a.data_inicio, a.data_fim));
   if (atestado) return { label: "AT", bg: "#FCEEDC", fg: "#9A5F14", title: "Atestado" };
