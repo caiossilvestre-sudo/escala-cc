@@ -1,11 +1,11 @@
 from datetime import date as date_type, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import get_current_colaborador, log_action, require_admin
 from app.core.email import enviar_email_aviso, smtp_configurado
-from app.core.teams import enviar_teams_aviso, teams_configurado
 from app.db.models import Aviso, Colaborador, Configuracao, Plantao, SolicitacaoFolga
 from app.db.session import get_db
 from app.logic import prazo_folga_plantao
@@ -140,27 +140,66 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
         db.add(n)
     db.commit()
 
-    # Tenta enviar cada aviso novo por e-mail e Teams também (só se
-    # configurado — senão fica só no painel, sem quebrar nada).
-    if smtp_configurado() or teams_configurado():
+    # Tenta enviar cada aviso novo por e-mail também (só se SMTP estiver
+    # configurado — senão fica só no painel, sem quebrar nada). O Teams não
+    # entra aqui: quem "empurra" pro Teams é o próprio Power Automate, que
+    # vem buscar os avisos pendentes via /avisos/pendentes-teams.
+    if smtp_configurado():
         colaboradores_por_id = {c.id: c for c in colaboradores}
         for n in novos:
             alvo = colaboradores_por_id.get(n.colaborador_id)
             if not alvo:
                 continue
-            if smtp_configurado():
-                sucesso, erro = enviar_email_aviso(alvo.email, n.tipo, n.mensagem)
-                n.email_enviado = sucesso
-                n.email_erro = erro
-                if sucesso and "email" not in n.canais:
-                    n.canais = n.canais + ["email"]
-            if teams_configurado():
-                sucesso, erro = enviar_teams_aviso(alvo.email, alvo.nome, n.tipo, n.mensagem)
-                n.teams_enviado = sucesso
-                n.teams_erro = erro
-                if sucesso and "teams" not in n.canais:
-                    n.canais = n.canais + ["teams"]
+            sucesso, erro = enviar_email_aviso(alvo.email, n.tipo, n.mensagem)
+            n.email_enviado = sucesso
+            n.email_erro = erro
+            if sucesso and "email" not in n.canais:
+                n.canais = n.canais + ["email"]
         db.commit()
 
     log_action(db, request, admin, "gerar_avisos", "aviso", None, {"quantidade": len(novos), "forcar": forcar})
     return {"gerados": len(novos)}
+
+
+def _verificar_chave_teams(x_api_key: str = Header(default="")):
+    """Autenticação simples (chave compartilhada) pro Power Automate consultar
+    os avisos pendentes — não usa login/JWT porque quem chama é um fluxo
+    automatizado, não uma pessoa logada no sistema."""
+    if not settings.teams_api_key or x_api_key != settings.teams_api_key:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Chave de acesso inválida.")
+
+
+@router.get("/pendentes-teams")
+def pendentes_teams(db: Session = Depends(get_db), _: None = Depends(_verificar_chave_teams)):
+    """O Power Automate chama isso periodicamente (ex: a cada 15 min) pra
+    buscar avisos que ainda não foram mandados pro Teams — em vez do nosso
+    sistema tentar chamar o Power Automate direto, o que exigiria OAuth."""
+    pendentes = db.query(Aviso).filter(Aviso.teams_enviado.isnot(True)).all()
+    resultado = []
+    for a in pendentes:
+        colaborador = db.get(Colaborador, a.colaborador_id)
+        if not colaborador:
+            continue
+        resultado.append({
+            "aviso_id": a.id,
+            "email_destinatario": colaborador.email,
+            "nome": colaborador.nome,
+            "tipo": a.tipo,
+            "mensagem": a.mensagem,
+        })
+    return resultado
+
+
+@router.post("/{aviso_id}/marcar-teams-enviado")
+def marcar_teams_enviado(aviso_id: str, db: Session = Depends(get_db), _: None = Depends(_verificar_chave_teams)):
+    """O Power Automate chama isso depois de mandar a mensagem com sucesso,
+    pra esse aviso não ser buscado de novo na próxima consulta."""
+    alvo = db.get(Aviso, aviso_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Aviso não encontrado.")
+    alvo.teams_enviado = True
+    alvo.teams_erro = None
+    if "teams" not in alvo.canais:
+        alvo.canais = alvo.canais + ["teams"]
+    db.commit()
+    return {"ok": True}

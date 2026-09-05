@@ -23,15 +23,12 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_from_nome: str = "Escala Suporte Técnico"
 
-    # Teams via Power Automate (opcional). Se ficar vazio, o sistema não
-    # tenta mandar pro Teams — segue funcionando normal, só no painel/e-mail.
-    power_automate_webhook_url: str = ""
-    # Desde nov/2025, a Microsoft exige autenticação OAuth pra chamar um
-    # fluxo do Power Automate a partir de fora — precisa de um app registrado
-    # no Microsoft Entra ID (Azure AD) com a permissão "Power Automate User.Read".
-    azure_tenant_id: str = ""
-    azure_client_id: str = ""
-    azure_client_secret: str = ""
+    # Teams via Power Automate (opcional). Aqui o Power Automate é quem
+    # busca os avisos pendentes periodicamente (não o contrário) — evita
+    # todo o imbróglio de OAuth exigido pra CHAMAR um fluxo de fora. Só
+    # precisa de uma chave simples, que o próprio Power Automate manda de
+    # volta num cabeçalho a cada consulta.
+    teams_api_key: str = ""
 
 
 settings = Settings()
