@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # Teams via Power Automate (opcional). Se ficar vazio, o sistema não
     # tenta mandar pro Teams — segue funcionando normal, só no painel/e-mail.
     power_automate_webhook_url: str = ""
+    # Desde nov/2025, a Microsoft exige autenticação OAuth pra chamar um
+    # fluxo do Power Automate a partir de fora — precisa de um app registrado
+    # no Microsoft Entra ID (Azure AD) com a permissão "Power Automate User.Read".
+    azure_tenant_id: str = ""
+    azure_client_id: str = ""
+    azure_client_secret: str = ""
 
 
 settings = Settings()
