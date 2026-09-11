@@ -1,10 +1,13 @@
+import calendar
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Colaborador, Plantao, PlantaoTemplate, SolicitacaoFolga
 from app.db.session import get_db
-from app.logic import checar_elegibilidade, datas_alvo_do_mes, ordenar_por_justica
+from app.logic import checar_elegibilidade, datas_alvo_do_mes, dia_e_trabalho_12x36, ordenar_por_justica
 from app.schemas import GerarPlantoesIn, PlantaoIn, PlantaoOut, PlantaoTemplateIn, PlantaoTemplateOut
 
 router = APIRouter(prefix="/plantoes", tags=["plantoes"])
@@ -48,10 +51,6 @@ def remover(plantao_id: str, request: Request, db: Session = Depends(get_db), us
     dono = db.get(Colaborador, alvo.colaborador_id)
     if dono:
         check_escopo_equipe(user, dono.equipe)
-    # Se já existe uma folga vinculada a esse plantão, ela referencia o
-    # plantao_id — sem desvincular primeiro, o banco recusa apagar o plantão
-    # (violação de integridade). A folga em si continua existindo no
-    # histórico, só perde a referência ao plantão que foi removido.
     db.query(SolicitacaoFolga).filter(SolicitacaoFolga.plantao_id == plantao_id).update({"plantao_id": None})
     db.delete(alvo)
     db.commit()
@@ -89,6 +88,42 @@ def reatribuir(plantao_id: str, novo_colaborador_id: str, request: Request, db: 
     db.commit()
     log_action(db, request, user, "reatribuir_plantao", "plantao", plantao_id)
     return alvo
+
+
+@router.post("/gerar-12x36")
+def gerar_12x36(colaborador_id: str, mes: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    """Gera os plantões do mês pra um colaborador em ciclo 12x36 (Monitoramento),
+    a partir da data de início do ciclo cadastrada nele — dia sim, dia não.
+    Não duplica: se já existe um plantão naquele dia, pula (idempotente, pode
+    rodar de novo sem medo)."""
+    alvo = db.get(Colaborador, colaborador_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+    check_escopo_equipe(user, alvo.equipe)
+    if not alvo.ciclo_12x36_inicio:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Esse colaborador ainda não tem uma data de início de ciclo 12x36 cadastrada.")
+
+    ano, mes_num = (int(p) for p in mes.split("-"))
+    total_dias = calendar.monthrange(ano, mes_num)[1]
+
+    criados = 0
+    for dia in range(1, total_dias + 1):
+        data_alvo = date(ano, mes_num, dia)
+        if not dia_e_trabalho_12x36(alvo.ciclo_12x36_inicio, data_alvo):
+            continue
+        ja_existe = db.query(Plantao).filter(Plantao.colaborador_id == alvo.id, Plantao.data == data_alvo).first()
+        if ja_existe:
+            continue
+        db.add(Plantao(
+            colaborador_id=alvo.id, data=data_alvo,
+            horario_inicio=alvo.horario_inicio, horario_fim=alvo.horario_fim,
+            tipo="Monitoramento 12x36", origem="auto_12x36", sugerido=False,
+        ))
+        criados += 1
+
+    db.commit()
+    log_action(db, request, user, "gerar_plantoes_12x36", "plantao", None, {"colaborador_id": colaborador_id, "mes": mes, "criados": criados})
+    return {"criados": criados}
 
 
 @router.post("/gerar")
@@ -137,8 +172,6 @@ def gerar(body: GerarPlantoesIn, request: Request, db: Session = Depends(get_db)
         "pendencias": pendencias,
     }
 
-
-# --- horários de plantão disponíveis (templates) ---
 
 @templates_router.get("", response_model=list[PlantaoTemplateOut])
 def listar_templates(db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):

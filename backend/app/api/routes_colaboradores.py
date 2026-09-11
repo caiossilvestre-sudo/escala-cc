@@ -51,6 +51,7 @@ def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), 
         password_hash=hash_password(body.senha_inicial),
         must_change_password=True,
         data_admissao=body.data_admissao, data_aniversario=body.data_aniversario,
+        ciclo_12x36_inicio=body.ciclo_12x36_inicio,
     )
     db.add(novo)
     db.commit()
@@ -61,9 +62,6 @@ def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), 
 
 @router.patch("/{colaborador_id}", response_model=ColaboradorOut)
 def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
-    """Edita um colaborador já existente. Toda mudança de equipe ou turno fica
-    registrada no histórico (com motivo obrigatório). Supervisor não pode
-    mexer em perfil de acesso nem em quais setores alguém gerencia."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
@@ -113,6 +111,8 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
         alvo.data_admissao = body.data_admissao
     if body.data_aniversario is not None:
         alvo.data_aniversario = body.data_aniversario
+    if body.ciclo_12x36_inicio is not None:
+        alvo.ciclo_12x36_inicio = body.ciclo_12x36_inicio
 
     db.commit()
     db.refresh(alvo)
@@ -136,9 +136,6 @@ def historico_equipe(colaborador_id: str, db: Session = Depends(get_db), user: C
 
 @router.post("/{colaborador_id}/desligar", response_model=ColaboradorOut)
 def desligar(colaborador_id: str, body: DesligarIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
-    """Desligamento é sempre um soft-delete: o colaborador vira 'inativo' e some
-    das listas de cadastro/atribuição automática, mas todo o histórico dele
-    continua intacto para relatórios e auditoria — nada é apagado."""
     alvo = db.get(Colaborador, colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")

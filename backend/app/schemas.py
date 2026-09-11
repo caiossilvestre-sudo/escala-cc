@@ -51,6 +51,7 @@ class ColaboradorIn(BaseModel):
     senha_inicial: str = Field(min_length=10, max_length=200)
     data_admissao: Optional[date] = None
     data_aniversario: Optional[date] = None
+    ciclo_12x36_inicio: Optional[date] = None
 
 
 class ColaboradorOut(BaseModel):
@@ -68,6 +69,7 @@ class ColaboradorOut(BaseModel):
     data_desligamento: Optional[date] = None
     data_admissao: Optional[date] = None
     data_aniversario: Optional[date] = None
+    ciclo_12x36_inicio: Optional[date] = None
     locked_until: Optional[datetime] = None
     failed_attempts: int = 0
 
@@ -92,6 +94,7 @@ class ColaboradorUpdateIn(BaseModel):
     horario_fim: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     data_admissao: Optional[date] = None
     data_aniversario: Optional[date] = None
+    ciclo_12x36_inicio: Optional[date] = None
     motivo: str = Field(min_length=3, max_length=300)
 
 

@@ -264,6 +264,17 @@ def checar_elegibilidade(db: Session, colaborador: Colaborador, equipe: str, dat
     return (len(motivos) == 0, motivos)
 
 
+def dia_e_trabalho_12x36(ciclo_inicio: date, data_alvo: date) -> bool:
+    """No ciclo 12x36 (dia sim, dia não), o próprio dia de início é sempre
+    trabalho. A partir daí, alterna: dias com diferença par em relação ao
+    início são trabalho, ímpar é folga. Datas antes do início do ciclo não
+    fazem parte dele (retorna False)."""
+    if data_alvo < ciclo_inicio:
+        return False
+    diferenca = (data_alvo - ciclo_inicio).days
+    return diferenca % 2 == 0
+
+
 def ordenar_por_justica(db: Session, elegiveis: list[Colaborador], ref_date: date) -> list[Colaborador]:
     def chave(c: Colaborador):
         recentes = contar_plantoes_recentes(db, c.id, ref_date)
