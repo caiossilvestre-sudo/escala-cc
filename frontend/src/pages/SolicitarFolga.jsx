@@ -2,12 +2,13 @@ import { useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
 import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
-import { todayISO, formatBR, formatBRDia, addDays, TIPO_LABEL } from "../lib/helpers";
+import { todayISO, formatBR, formatBRDia, addDays, prazoFolgaPlantao, TIPO_LABEL } from "../lib/helpers";
 
 export default function SolicitarFolga({ user }) {
   const plantoes = useApiList("/plantoes");
   const solicitacoes = useApiList("/solicitacoes");
   const cotas = useApiList("/solicitacoes/cotas-sindicato");
+  const feriados = useApiList("/feriados");
   const { toast, showToast } = useToast();
 
   const [tipo, setTipo] = useState("folga_plantao");
@@ -48,7 +49,17 @@ export default function SolicitarFolga({ user }) {
     }
   };
 
-  const loading = plantoes.loading || solicitacoes.loading || cotas.loading;
+  const excluir = async (id) => {
+    if (!window.confirm("Excluir esta solicitação? Essa ação não pode ser desfeita.")) return;
+    try {
+      await api.delete(`/solicitacoes/${id}`);
+      showToast("Solicitação excluída.");
+      solicitacoes.reload();
+      cotas.reload();
+    } catch (e) { showToast(e.message || "Erro ao excluir."); }
+  };
+
+  const loading = plantoes.loading || solicitacoes.loading || cotas.loading || feriados.loading;
 
   return (
     <>
@@ -82,12 +93,12 @@ export default function SolicitarFolga({ user }) {
                       </div>
                       {plantaoEscolhido && (
                         <div className="info-box">
-                          Prazo pra agendar essa folga: até {formatBR(addDays(plantaoEscolhido.data, 6))} (ou mais, se o plantão foi num feriado — o sistema confere isso automaticamente). Domingo e feriado não valem como data de folga.
+                          Prazo pra agendar essa folga: até {formatBR(prazoFolgaPlantao(plantaoEscolhido.data, feriados.data))} (6 dias úteis, sem contar domingo nem feriado). Domingo e feriado também não valem como data de folga.
                         </div>
                       )}
                       <div className="field" style={{ maxWidth: 220, marginBottom: 12 }}>
                         <label>Data da folga</label>
-                        <input type="date" value={dataFolgaPlantao} min={plantaoEscolhido ? addDays(plantaoEscolhido.data, 1) : undefined} onChange={(e) => setDataFolgaPlantao(e.target.value)} />
+                        <input type="date" value={dataFolgaPlantao} min={plantaoEscolhido ? addDays(plantaoEscolhido.data, 1) : undefined} max={plantaoEscolhido ? prazoFolgaPlantao(plantaoEscolhido.data, feriados.data) : undefined} onChange={(e) => setDataFolgaPlantao(e.target.value)} />
                       </div>
                     </>
                   )}
@@ -121,13 +132,14 @@ export default function SolicitarFolga({ user }) {
               <div className="section-title">Minhas solicitações</div>
               {minhas.length === 0 ? <div className="empty">Você ainda não solicitou nenhuma folga.</div> : (
                 <table className="tbl">
-                  <thead><tr><th>Tipo</th><th>Data</th><th>Status</th><th>Motivo (se rejeitada)</th></tr></thead>
+                  <thead><tr><th>Tipo</th><th>Data</th><th>Status</th><th>Motivo (se rejeitada)</th><th></th></tr></thead>
                   <tbody>{[...minhas].sort((a, b) => b.data_solicitada.localeCompare(a.data_solicitada)).map((s) => (
                     <tr key={s.id}>
                       <td>{TIPO_LABEL[s.tipo]}</td>
                       <td className="mono">{formatBRDia(s.data_solicitada)}</td>
                       <td><Pill status={s.status}>{s.status === "aprovada" ? "Aprovada" : s.status === "pendente" ? "Pendente" : "Rejeitada"}</Pill></td>
                       <td style={{ color: "var(--text-muted)" }}>{s.motivo_rejeicao || "—"}</td>
+                      <td>{s.status === "pendente" && <button className="btn btn-ghost btn-sm" onClick={() => excluir(s.id)}>Excluir</button>}</td>
                     </tr>
                   ))}</tbody>
                 </table>

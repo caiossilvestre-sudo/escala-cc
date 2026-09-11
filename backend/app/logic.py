@@ -122,19 +122,24 @@ def cota_disponivel_para_data(db: Session, colaborador_id: str, data_alvo: date,
     return escolhida["nome"], None, None
 
 
-# --- Prazo de folga de plantão: 6 dias corridos, ou até o domingo da semana
-# seguinte se o plantão foi realizado num feriado ---
-
-def _domingo_da_semana(d: date) -> date:
-    return d + timedelta(days=(6 - d.weekday()))
-
+# --- Prazo de folga de plantão: 6 dias úteis (não conta domingo nem
+# feriado), contados a partir do dia seguinte ao plantão. Na prática: pra
+# qualquer dia da semana, o prazo cai no mesmo dia da semana seguinte — só
+# domingo é diferente, porque cai no sábado da MESMA semana (já que domingo
+# em si não é dia útil e não entra na contagem). Se um feriado aparecer no
+# meio da janela de 6 dias (seja o próprio dia do plantão ou não), ele
+# também é pulado, empurrando o prazo mais pra frente.
 
 def prazo_folga_plantao(db: Session, data_plantao: date) -> date:
-    feriado = db.query(Feriado).filter(Feriado.data == data_plantao).first()
-    if feriado:
-        domingo_atual = _domingo_da_semana(data_plantao)
-        return domingo_atual + timedelta(days=7)  # domingo da semana seguinte
-    return data_plantao + timedelta(days=6)
+    dias_uteis_contados = 0
+    data_atual = data_plantao
+    while dias_uteis_contados < 6:
+        data_atual += timedelta(days=1)
+        eh_domingo = data_atual.weekday() == 6
+        eh_feriado = db.query(Feriado).filter(Feriado.data == data_atual).first() is not None
+        if not eh_domingo and not eh_feriado:
+            dias_uteis_contados += 1
+    return data_atual
 
 
 def dia_util_para_folga(db: Session, data_alvo: date) -> tuple[bool, str]:

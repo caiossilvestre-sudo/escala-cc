@@ -120,17 +120,21 @@ export function cicloSindicatoAtual(hoje = new Date()) {
   return mes <= 2 ? hoje.getFullYear() - 1 : hoje.getFullYear();
 }
 
-/** Espelha app/logic.py::prazo_folga_plantao — 6 dias corridos, ou até o
- * domingo da semana seguinte se o plantão foi num feriado. */
+/** Espelha app/logic.py::prazo_folga_plantao — conta 6 dias úteis (pula
+ * domingo E feriado, onde quer que apareçam na janela), a partir do dia
+ * seguinte ao plantão. */
 export function prazoFolgaPlantao(dataPlantaoStr, feriados) {
-  const ehFeriado = feriados.some((f) => f.data === dataPlantaoStr);
-  if (ehFeriado) {
-    const d = new Date(dataPlantaoStr + "T00:00:00");
-    const diasAteDomingo = (7 - d.getDay()) % 7;
-    const domingoAtual = addDays(dataPlantaoStr, diasAteDomingo);
-    return addDays(domingoAtual, 7);
+  const feriadosSet = new Set((feriados || []).map((f) => f.data));
+  let contados = 0;
+  let atual = dataPlantaoStr;
+  while (contados < 6) {
+    atual = addDays(atual, 1);
+    const d = new Date(atual + "T00:00:00");
+    const ehDomingo = d.getDay() === 0;
+    const ehFeriado = feriadosSet.has(atual);
+    if (!ehDomingo && !ehFeriado) contados += 1;
   }
-  return addDays(dataPlantaoStr, 6);
+  return atual;
 }
 
 export const TIPO_LABEL = { folga_plantao: "Folga de plantão", folga_sindicato: "Folga normal (sindicato)" };
