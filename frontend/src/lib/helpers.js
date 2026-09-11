@@ -127,7 +127,7 @@ export function prazoFolgaPlantao(dataPlantaoStr, feriados) {
   const feriadosSet = new Set((feriados || []).map((f) => f.data));
   let contados = 0;
   let atual = dataPlantaoStr;
-  while (contados < 6) {
+  while (contados < 10) {
     atual = addDays(atual, 1);
     const d = new Date(atual + "T00:00:00");
     const ehDomingo = d.getDay() === 0;
@@ -170,6 +170,9 @@ export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, ates
     if (diasDesdeInicio % 2 !== 0) {
       return { label: "OFF", bg: "#EEF0F3", fg: "#6B7280", title: "Folga do ciclo 12x36" };
     }
+    // Dia de trabalho pelo ciclo, sem plantão real cadastrado — o próprio
+    // padrão dia sim/dia não já garante isso todo mês, sem precisar gerar nada.
+    return { label: "P", bg: "#DCE8FB", fg: "#1E4FA0", title: `Plantão do ciclo 12x36, ${colaborador.horario_inicio}–${colaborador.horario_fim} (calculado automaticamente)` };
   }
   return null;
 }
