@@ -154,6 +154,18 @@ export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, ates
   if (atestado) return { label: "AT", bg: "#FCEEDC", fg: "#9A5F14", title: "Atestado" };
   const feriado = feriadosPorData ? feriadosPorData[dateStr] : null;
   if (feriado) return { label: "F", bg: "#EAECEF", fg: "#5B5F6B", title: `Feriado: ${feriado.nome} — sem plantão neste dia` };
+
+  // Ciclo 12x36 (Monitoramento): dia sim, dia não a partir da data de início
+  // cadastrada. Se não tem plantão nem nada mais registrado nesse dia, e a
+  // conta do ciclo diz que é dia de folga, deixa isso visível em vez de
+  // ficar uma célula em branco sem explicação nenhuma.
+  const colaborador = colaboradoresById ? colaboradoresById[colaboradorId] : null;
+  if (colaborador && colaborador.equipe === "Monitoramento" && colaborador.escala_tipo === "12x36" && colaborador.ciclo_12x36_inicio && dateStr >= colaborador.ciclo_12x36_inicio) {
+    const diasDesdeInicio = Math.round((new Date(dateStr + "T00:00:00") - new Date(colaborador.ciclo_12x36_inicio + "T00:00:00")) / 86400000);
+    if (diasDesdeInicio % 2 !== 0) {
+      return { label: "OFF", bg: "#EEF0F3", fg: "#6B7280", title: "Folga do ciclo 12x36" };
+    }
+  }
   return null;
 }
 

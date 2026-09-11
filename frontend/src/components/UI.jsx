@@ -4,8 +4,6 @@ import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoD
 /** Select que também permite digitar um valor novo (ex: adicionar um setor ou uma escala que ainda não existe). */
 export function EditableSelect({ value, onChange, options, placeholder = "Novo valor" }) {
   const [customMode, setCustomMode] = useState(!options.includes(value) && !!value);
-  // Reavalia quando as opções terminam de carregar (evitam ficar "preso" em
-  // modo texto livre se o valor já existir na lista, só chegou depois).
   useEffect(() => {
     if (options.includes(value)) setCustomMode(false);
   }, [options, value]);
@@ -122,6 +120,7 @@ export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestado
         <span className="item"><span className="sw" style={{ background: "#E8972E" }} />Atestado</span>
         <span className="item"><span className="sw" style={{ background: "#8A8F98" }} />Férias</span>
         <span className="item"><span className="sw" style={{ background: "#5B5F6B" }} />Feriado (sem plantão)</span>
+        <span className="item"><span className="sw" style={{ background: "#6B7280" }} />OFF — folga do ciclo 12x36</span>
       </div>
 
       <div className="cronograma-wrap">
