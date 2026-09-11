@@ -152,15 +152,20 @@ export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, ates
   if (folga) return { label: "F", bg: "#FBE3E5", fg: "#B23A4C", title: TIPO_LABEL[folga.tipo] };
   const atestado = atestados.find((a) => a.colaborador_id === colaboradorId && rangeOverlapsDate(dateStr, a.data_inicio, a.data_fim));
   if (atestado) return { label: "AT", bg: "#FCEEDC", fg: "#9A5F14", title: "Atestado" };
-  const feriado = feriadosPorData ? feriadosPorData[dateStr] : null;
-  if (feriado) return { label: "F", bg: "#EAECEF", fg: "#5B5F6B", title: `Feriado: ${feriado.nome} — sem plantão neste dia` };
 
-  // Ciclo 12x36 (Monitoramento): dia sim, dia não a partir da data de início
-  // cadastrada. Se não tem plantão nem nada mais registrado nesse dia, e a
-  // conta do ciclo diz que é dia de folga, deixa isso visível em vez de
-  // ficar uma célula em branco sem explicação nenhuma.
+  // Ciclo 12x36 (Monitoramento): a escala roda dia sim, dia não o ano
+  // inteiro, sem parar em feriado (o feriado não folga essa equipe). Por
+  // isso, pra quem está nesse ciclo, o marcador de "feriado" nem entra em
+  // jogo — só a conta do ciclo decide se o dia é trabalho ou folga.
   const colaborador = colaboradoresById ? colaboradoresById[colaboradorId] : null;
-  if (colaborador && colaborador.equipe === "Monitoramento" && colaborador.escala_tipo === "12x36" && colaborador.ciclo_12x36_inicio && dateStr >= colaborador.ciclo_12x36_inicio) {
+  const noCiclo12x36 = colaborador && colaborador.equipe === "Monitoramento" && colaborador.escala_tipo === "12x36" && colaborador.ciclo_12x36_inicio;
+
+  if (!noCiclo12x36) {
+    const feriado = feriadosPorData ? feriadosPorData[dateStr] : null;
+    if (feriado) return { label: "F", bg: "#EAECEF", fg: "#5B5F6B", title: `Feriado: ${feriado.nome} — sem plantão neste dia` };
+  }
+
+  if (noCiclo12x36 && dateStr >= colaborador.ciclo_12x36_inicio) {
     const diasDesdeInicio = Math.round((new Date(dateStr + "T00:00:00") - new Date(colaborador.ciclo_12x36_inicio + "T00:00:00")) / 86400000);
     if (diasDesdeInicio % 2 !== 0) {
       return { label: "OFF", bg: "#EEF0F3", fg: "#6B7280", title: "Folga do ciclo 12x36" };
