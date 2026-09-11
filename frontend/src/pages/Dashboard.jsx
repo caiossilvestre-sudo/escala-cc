@@ -3,6 +3,13 @@ import { TopBar, Pill, Spinner, ErrorBox } from "../components/UI";
 import { useApiList } from "../lib/hooks";
 import { currentMonthKey, monthLabel, formatBR, formatBRDia, todayISO, addDays, rangeOverlapsDate, TIPO_LABEL } from "../lib/helpers";
 
+/** Compara horário atual contra um intervalo, cobrindo turnos que cruzam a
+ * meia-noite (ex: 19:00–07:00, comum no 12x36 do Monitoramento). */
+function estaNoHorario(horaAtual, inicio, fim) {
+  if (inicio <= fim) return horaAtual >= inicio && horaAtual <= fim;
+  return horaAtual >= inicio || horaAtual <= fim; // turno vira a noite
+}
+
 function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados }) {
   const hoje = todayISO();
   const agora = new Date();
@@ -11,23 +18,72 @@ function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, f
   const feriadoHoje = feriados.find((f) => f.data === hoje && (f.tipo === "obrigatorio" || f.trabalha));
   const diaEspecial = diaSemana === 0 || !!feriadoHoje;
 
-  let lista = [];
-  if (diaEspecial) {
-    lista = plantoes
-      .filter((p) => p.data === hoje)
-      .map((p) => ({ colaborador: colaboradores.find((c) => c.id === p.colaborador_id), inicio: p.horario_inicio, fim: p.horario_fim, tipo: `Plantão — ${p.tipo || ""}` }))
-      .filter((x) => x.colaborador);
-  } else {
-    lista = colaboradores
-      .filter((c) => c.role !== "admin")
-      .filter((c) => c.horario_inicio <= horaAtual && horaAtual <= c.horario_fim)
-      .filter((c) => {
-        const temFolga = solicitacoes.some((s) => s.colaborador_id === c.id && s.status === "aprovada" && s.data_solicitada === hoje);
-        const temAtestado = atestados.some((a) => a.colaborador_id === c.id && rangeOverlapsDate(hoje, a.data_inicio, a.data_fim));
-        const temFerias = ferias.some((f) => f.colaborador_id === c.id && f.status === "aprovada" && rangeOverlapsDate(hoje, f.data_inicio, f.data_fim));
-        return !temFolga && !temAtestado && !temFerias;
-      })
-      .map((c) => ({ colaborador: c, inicio: c.horario_inicio, fim: c.horario_fim, tipo: c.equipe }));
+  const ontem = addDays(hoje, -1);
+
+  const lista = [];
+  for (const c of colaboradores) {
+    if (c.role === "admin") continue;
+
+    // 1) Plantão real cadastrado pra hoje sempre tem prioridade — cobre
+    // domingo, feriado, plantão manual e também o 12x36 já gerado. Também
+    // olha o plantão de ONTEM se ele cruza a meia-noite e ainda está em
+    // andamento de madrugada (turno 19h–07h iniciado ontem, por exemplo).
+    const plantaoHoje = plantoes.find((p) => p.colaborador_id === c.id && p.data === hoje);
+    const plantaoOntem = plantoes.find((p) => p.colaborador_id === c.id && p.data === ontem && p.horario_fim < p.horario_inicio);
+
+    if (plantaoHoje && estaNoHorario(horaAtual, plantaoHoje.horario_inicio, plantaoHoje.horario_fim)) {
+      lista.push({ colaborador: c, inicio: plantaoHoje.horario_inicio, fim: plantaoHoje.horario_fim, tipo: `Plantão — ${plantaoHoje.tipo || ""}` });
+      continue;
+    }
+    if (plantaoOntem && horaAtual <= plantaoOntem.horario_fim) {
+      lista.push({ colaborador: c, inicio: plantaoOntem.horario_inicio, fim: plantaoOntem.horario_fim, tipo: `Plantão — ${plantaoOntem.tipo || ""} (madrugada)` });
+      continue;
+    }
+    if (plantaoHoje) {
+      const cruzaHoje = plantaoHoje.horario_fim < plantaoHoje.horario_inicio;
+      // Se cruza a meia-noite, "hoje" só conta a partir do início (a
+      // madrugada pertence ao turno de ONTEM, já tratado acima) — senão a
+      // mesma janela de horário seria contada duas vezes, num dia e no outro.
+      const dentro = cruzaHoje ? horaAtual >= plantaoHoje.horario_inicio : estaNoHorario(horaAtual, plantaoHoje.horario_inicio, plantaoHoje.horario_fim);
+      if (dentro) {
+        lista.push({ colaborador: c, inicio: plantaoHoje.horario_inicio, fim: plantaoHoje.horario_fim, tipo: `Plantão — ${plantaoHoje.tipo || ""}` });
+      }
+      continue;
+    }
+
+    // 2) Ciclo 12x36 (Monitoramento) sem plantão gerado ainda pro dia: calcula
+    // pela própria conta do ciclo, sem depender de já ter rodado "Gerar
+    // plantões 12x36" — e feriado não muda nada pra essa equipe. Também
+    // confere se o turno de ONTEM (se cruza a meia-noite) ainda está rolando.
+    const ehMonitoramento12x36 = c.equipe === "Monitoramento" && c.escala_tipo === "12x36" && c.ciclo_12x36_inicio;
+    if (ehMonitoramento12x36) {
+      const turnoCruzaMeiaNoite = c.horario_fim < c.horario_inicio;
+      if (turnoCruzaMeiaNoite && horaAtual <= c.horario_fim && ontem >= c.ciclo_12x36_inicio) {
+        const diasDesdeInicioOntem = Math.round((new Date(ontem + "T00:00:00") - new Date(c.ciclo_12x36_inicio + "T00:00:00")) / 86400000);
+        if (diasDesdeInicioOntem % 2 === 0) {
+          lista.push({ colaborador: c, inicio: c.horario_inicio, fim: c.horario_fim, tipo: `${c.equipe} (madrugada)` });
+          continue;
+        }
+      }
+      if (hoje >= c.ciclo_12x36_inicio) {
+        const diasDesdeInicio = Math.round((new Date(hoje + "T00:00:00") - new Date(c.ciclo_12x36_inicio + "T00:00:00")) / 86400000);
+        const dentroHoje = turnoCruzaMeiaNoite ? horaAtual >= c.horario_inicio : estaNoHorario(horaAtual, c.horario_inicio, c.horario_fim);
+        if (diasDesdeInicio % 2 === 0 && dentroHoje) {
+          lista.push({ colaborador: c, inicio: c.horario_inicio, fim: c.horario_fim, tipo: c.equipe });
+        }
+      }
+      continue;
+    }
+
+    // 3) Escala normal (segunda a sábado) — domingo e feriado só valem por
+    // plantão mesmo, já tratado acima.
+    if (diaEspecial) continue;
+    if (!estaNoHorario(horaAtual, c.horario_inicio, c.horario_fim)) continue;
+    const temFolga = solicitacoes.some((s) => s.colaborador_id === c.id && s.status === "aprovada" && s.data_solicitada === hoje);
+    const temAtestado = atestados.some((a) => a.colaborador_id === c.id && rangeOverlapsDate(hoje, a.data_inicio, a.data_fim));
+    const temFerias = ferias.some((f) => f.colaborador_id === c.id && f.status === "aprovada" && rangeOverlapsDate(hoje, f.data_inicio, f.data_fim));
+    if (temFolga || temAtestado || temFerias) continue;
+    lista.push({ colaborador: c, inicio: c.horario_inicio, fim: c.horario_fim, tipo: c.equipe });
   }
 
   return (
@@ -38,7 +94,7 @@ function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, f
       </div>
       {diaEspecial && (
         <div className="info-box">
-          {feriadoHoje ? `Hoje é feriado (${feriadoHoje.nome})` : "Hoje é domingo"} — só quem está de plantão aparece aqui, expediente normal não se aplica.
+          {feriadoHoje ? `Hoje é feriado (${feriadoHoje.nome})` : "Hoje é domingo"} — só quem está de plantão (ou no ciclo 12x36) aparece aqui, expediente normal não se aplica.
         </div>
       )}
       {lista.length === 0 ? (
