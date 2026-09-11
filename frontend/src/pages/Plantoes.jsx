@@ -4,7 +4,7 @@ import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
 import {
   EQUIPES, TURNOS, todayISO, formatBR, formatBRDia, addDays, monthLabel, currentMonthKey,
-  checarElegibilidade, ordenarPorJustica, contarPlantoesRecentes,
+  checarElegibilidade, ordenarPorJustica, contarPlantoesRecentes, prazoFolgaPlantao,
 } from "../lib/helpers";
 
 function TemplatesSection({ templates, onReload, showToast, equipeOptions, turnoOptions }) {
@@ -77,6 +77,50 @@ function GerarSection({ onGerado, showToast }) {
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+function Gerar12x36Section({ colaboradores, onGerado, showToast }) {
+  const elegiveis = colaboradores.filter((c) => c.equipe === "Monitoramento" && c.escala_tipo === "12x36" && c.ciclo_12x36_inicio);
+  const [colaboradorId, setColaboradorId] = useState(elegiveis[0]?.id || "");
+  const [mes, setMes] = useState(currentMonthKey());
+  const [gerando, setGerando] = useState(false);
+
+  if (elegiveis.length === 0) {
+    return (
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="section-title">Gerar plantões 12x36 (Monitoramento)</div>
+        <div className="empty">Nenhum colaborador do Monitoramento com escala 12x36 e data de início do ciclo cadastrada ainda. Cadastre isso na tela de Colaboradores primeiro.</div>
+      </div>
+    );
+  }
+
+  const gerar = async () => {
+    if (!colaboradorId) return;
+    setGerando(true);
+    try {
+      const r = await api.post(`/plantoes/gerar-12x36?colaborador_id=${colaboradorId}&mes=${mes}`);
+      showToast(`${r.criados} plantão(ões) gerado(s) para ${monthLabel(mes)}.`);
+      onGerado();
+    } catch (e) { showToast(e.message); } finally { setGerando(false); }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="section-title">Gerar plantões 12x36 (Monitoramento)</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+        A partir do 1º dia de trabalho cadastrado na pessoa, gera os plantões do mês escolhido seguindo o padrão dia sim, dia não. Pode rodar de novo sem medo — não duplica o que já existe.
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="field" style={{ minWidth: 200 }}><label>Colaborador</label>
+          <select value={colaboradorId} onChange={(e) => setColaboradorId(e.target.value)}>
+            {elegiveis.map((c) => <option key={c.id} value={c.id}>{c.nome} (ciclo desde {formatBR(c.ciclo_12x36_inicio)})</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Mês</label><input type="month" value={mes} onChange={(e) => setMes(e.target.value)} /></div>
+        <button className="btn btn-primary" disabled={gerando} onClick={gerar}>{gerando ? "Gerando…" : "Gerar plantões do mês"}</button>
+      </div>
     </div>
   );
 }
@@ -211,11 +255,10 @@ export default function Plantoes() {
   const ferias = useApiList("/ferias");
   const atestados = useApiList("/atestados");
   const solicitacoes = useApiList("/solicitacoes");
+  const feriados = useApiList("/feriados");
   const { toast, showToast } = useToast();
-  const loading = templates.loading || plantoes.loading || colaboradores.loading;
+  const loading = templates.loading || plantoes.loading || colaboradores.loading || feriados.loading;
   const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
-  // Só mostra setor/turno que alguém do time (ou algum horário cadastrado)
-  // realmente usa agora — some sozinho da lista quando ninguém mais usa.
   const equipeOptions = Array.from(new Set([...colaboradores.data.map((c) => c.equipe), ...templates.data.map((t) => t.equipe)])).filter(Boolean);
   const turnoOptions = Array.from(new Set([...colaboradores.data.map((c) => c.turno), ...templates.data.map((t) => t.turno)])).filter(Boolean);
   const confirmar = async (id) => { try { await api.post(`/plantoes/${id}/confirmar`); plantoes.reload(); } catch (e) { showToast(e.message); } };
@@ -240,6 +283,7 @@ export default function Plantoes() {
           <>
             <TemplatesSection templates={templates.data} onReload={templates.reload} showToast={showToast} equipeOptions={equipeOptions} turnoOptions={turnoOptions} />
             <GerarSection onGerado={plantoes.reload} showToast={showToast} />
+            <Gerar12x36Section colaboradores={colaboradores.data} onGerado={plantoes.reload} showToast={showToast} />
             <SugestaoManual colaboradores={colaboradores.data} plantoes={plantoes.data} ferias={ferias.data} atestados={atestados.data} solicitacoes={solicitacoes.data} onAtribuido={plantoes.reload} showToast={showToast} equipeOptions={equipeOptions} />
 
             <NovoPlantaoManualForm colaboradores={colaboradores.data} onCriado={plantoes.reload} showToast={showToast} />
@@ -257,7 +301,7 @@ export default function Plantoes() {
                         </select>
                       ) : nome(p.colaborador_id)}</td>
                       <td className="mono">{formatBRDia(p.data)}</td><td className="mono">{p.horario_inicio}–{p.horario_fim}</td><td>{p.tipo || "—"}</td>
-                      <td className="mono">{formatBR(addDays(p.data, 6))}</td>
+                      <td className="mono">{formatBR(prazoFolgaPlantao(p.data, feriados.data))}</td>
                       <td>{p.sugerido ? <Pill status="pendente">Sugerido</Pill> : <Pill status="aprovada">Confirmado</Pill>}</td>
                       <td style={{ display: "flex", gap: 6 }}>
                         {p.sugerido && <button className="btn btn-success btn-sm" onClick={() => confirmar(p.id)}>✓</button>}

@@ -27,8 +27,11 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
     nome: "", email: "", role: "colaborador", equipe: equipeInicial, equipes_gerenciadas: [],
     turno: turnoOptions[0] || TURNOS[0], escala_tipo: escalaOptions[0] || ESCALAS[0],
     horario_inicio: "08:00", horario_fim: "17:00", senha_inicial: "", data_admissao: "", data_aniversario: "",
+    ciclo_12x36_inicio: "",
   });
   const [busy, setBusy] = useState(false);
+
+  const ehMonitoramento12x36 = form.equipe === "Monitoramento" && form.escala_tipo === "12x36";
 
   const submit = async () => {
     if (!form.nome.trim() || !form.email.trim() || form.senha_inicial.length < 10) {
@@ -37,11 +40,11 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
     }
     setBusy(true);
     try {
-      const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null };
+      const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null, ciclo_12x36_inicio: form.ciclo_12x36_inicio || null };
       if (form.role !== "supervisor") delete payload.equipes_gerenciadas;
       await api.post("/colaboradores", payload);
       showToast("Colaborador cadastrado.");
-      setForm({ ...form, nome: "", email: "", senha_inicial: "", data_admissao: "", data_aniversario: "" });
+      setForm({ ...form, nome: "", email: "", senha_inicial: "", data_admissao: "", data_aniversario: "", ciclo_12x36_inicio: "" });
       onCreated();
     } catch (e) {
       showToast(e.message || "Erro ao cadastrar.");
@@ -92,7 +95,13 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
         <div className="field"><label>Senha inicial</label><input type="text" value={form.senha_inicial} onChange={(e) => setForm({ ...form, senha_inicial: e.target.value })} placeholder="mín. 10 caracteres" /></div>
         <div className="field"><label>Data de admissão (opcional)</label><input type="date" value={form.data_admissao} onChange={(e) => setForm({ ...form, data_admissao: e.target.value })} /></div>
         <div className="field"><label>Aniversário (opcional)</label><input type="date" value={form.data_aniversario} onChange={(e) => setForm({ ...form, data_aniversario: e.target.value })} /></div>
+        {ehMonitoramento12x36 && (
+          <div className="field"><label>1º dia de trabalho do ciclo 12x36</label><input type="date" value={form.ciclo_12x36_inicio} onChange={(e) => setForm({ ...form, ciclo_12x36_inicio: e.target.value })} /></div>
+        )}
       </div>
+      {ehMonitoramento12x36 && (
+        <div className="info-box">Com essa data preenchida, a partir dela o sistema já sabe gerar sozinho os plantões desse ciclo (dia sim, dia não) — na aba Plantões, use "Gerar plantões 12x36".</div>
+      )}
       {!souSupervisor && form.role === "supervisor" && (
         <div className="field" style={{ marginBottom: 12 }}>
           <label>Setores gerenciados (pode marcar mais de um)</label>
@@ -111,14 +120,17 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
     turno: colaborador.turno, escala_tipo: colaborador.escala_tipo,
     horario_inicio: colaborador.horario_inicio, horario_fim: colaborador.horario_fim,
     data_admissao: colaborador.data_admissao || "", data_aniversario: colaborador.data_aniversario || "",
+    ciclo_12x36_inicio: colaborador.ciclo_12x36_inicio || "",
     motivo: "",
   });
   const [busy, setBusy] = useState(false);
+  const ehMonitoramento12x36 = form.equipe === "Monitoramento" && form.escala_tipo === "12x36";
+
   const submit = async () => {
     if (!form.motivo.trim()) { showToast("Informe o motivo da alteração."); return; }
     setBusy(true);
     try {
-      const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null };
+      const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null, ciclo_12x36_inicio: form.ciclo_12x36_inicio || null };
       if (souSupervisor) { delete payload.role; delete payload.equipes_gerenciadas; }
       await api.patch(`/colaboradores/${colaborador.id}`, payload);
       showToast("Colaborador atualizado.");
@@ -155,6 +167,9 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
         <div className="field"><label>Fim</label><input type="time" value={form.horario_fim} onChange={(e) => setForm({ ...form, horario_fim: e.target.value })} /></div>
         <div className="field"><label>Admissão (opcional)</label><input type="date" value={form.data_admissao} onChange={(e) => setForm({ ...form, data_admissao: e.target.value })} /></div>
         <div className="field"><label>Aniversário (opcional)</label><input type="date" value={form.data_aniversario} onChange={(e) => setForm({ ...form, data_aniversario: e.target.value })} /></div>
+        {ehMonitoramento12x36 && (
+          <div className="field"><label>1º dia de trabalho do ciclo 12x36</label><input type="date" value={form.ciclo_12x36_inicio} onChange={(e) => setForm({ ...form, ciclo_12x36_inicio: e.target.value })} /></div>
+        )}
       </div>
       {!souSupervisor && form.role === "supervisor" && (
         <div className="field" style={{ marginBottom: 10 }}>
@@ -259,8 +274,6 @@ export default function Colaboradores({ user }) {
   const souSupervisor = user?.role === "supervisor";
   const minhasEquipes = souSupervisor ? (user.equipes_gerenciadas?.length ? user.equipes_gerenciadas : [user.equipe]) : [];
 
-  // Só mostra setor/turno/escala que alguém realmente está usando agora —
-  // assim que ninguém mais usa um valor, ele some sozinho da lista.
   const equipeOptions = Array.from(new Set(data.map((c) => c.equipe))).filter(Boolean);
   const turnoOptions = Array.from(new Set(data.map((c) => c.turno))).filter(Boolean);
   const escalaOptions = Array.from(new Set(data.map((c) => c.escala_tipo))).filter(Boolean);
@@ -322,6 +335,7 @@ export default function Colaboradores({ user }) {
                         {c.status === "inativo" && <Pill status="rejeitada">Desligado{c.data_desligamento ? ` em ${c.data_desligamento}` : ""}</Pill>}
                         {estaBloqueado(c) && <Pill status="rejeitada">🔒 Bloqueado até {new Date(c.locked_until + "Z").toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</Pill>}
                         {(c.role === "admin" || c.role === "visualizador" || c.role === "supervisor") && <Pill status="aprovada">{ROLE_PILL_LABEL[c.role]}{c.role === "supervisor" && c.equipes_gerenciadas?.length > 1 ? ` (${c.equipes_gerenciadas.length} setores)` : ""}</Pill>}
+                        {c.escala_tipo === "12x36" && c.ciclo_12x36_inicio && <Pill status="plantao">Ciclo 12x36 desde {c.ciclo_12x36_inicio}</Pill>}
                       </div>
                     </div>
                     {c.status === "ativo" ? (
