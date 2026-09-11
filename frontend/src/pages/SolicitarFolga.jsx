@@ -2,13 +2,12 @@ import { useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
 import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
-import { todayISO, formatBR, formatBRDia, addDays, prazoFolgaPlantao, TIPO_LABEL } from "../lib/helpers";
+import { todayISO, formatBR, formatBRDia, addDays, TIPO_LABEL } from "../lib/helpers";
 
 export default function SolicitarFolga({ user }) {
   const plantoes = useApiList("/plantoes");
   const solicitacoes = useApiList("/solicitacoes");
   const cotas = useApiList("/solicitacoes/cotas-sindicato");
-  const feriados = useApiList("/feriados");
   const { toast, showToast } = useToast();
 
   const [tipo, setTipo] = useState("folga_plantao");
@@ -59,7 +58,7 @@ export default function SolicitarFolga({ user }) {
     } catch (e) { showToast(e.message || "Erro ao excluir."); }
   };
 
-  const loading = plantoes.loading || solicitacoes.loading || cotas.loading || feriados.loading;
+  const loading = plantoes.loading || solicitacoes.loading || cotas.loading;
 
   return (
     <>
@@ -93,12 +92,12 @@ export default function SolicitarFolga({ user }) {
                       </div>
                       {plantaoEscolhido && (
                         <div className="info-box">
-                          Prazo pra agendar essa folga: até {formatBR(prazoFolgaPlantao(plantaoEscolhido.data, feriados.data))} (6 dias úteis, sem contar domingo nem feriado). Domingo e feriado também não valem como data de folga.
+                          Prazo pra agendar essa folga: até {formatBR(addDays(plantaoEscolhido.data, 6))} (ou mais, se o plantão foi num feriado — o sistema confere isso automaticamente). Domingo e feriado não valem como data de folga.
                         </div>
                       )}
                       <div className="field" style={{ maxWidth: 220, marginBottom: 12 }}>
                         <label>Data da folga</label>
-                        <input type="date" value={dataFolgaPlantao} min={plantaoEscolhido ? addDays(plantaoEscolhido.data, 1) : undefined} max={plantaoEscolhido ? prazoFolgaPlantao(plantaoEscolhido.data, feriados.data) : undefined} onChange={(e) => setDataFolgaPlantao(e.target.value)} />
+                        <input type="date" value={dataFolgaPlantao} min={plantaoEscolhido ? addDays(plantaoEscolhido.data, 1) : undefined} onChange={(e) => setDataFolgaPlantao(e.target.value)} />
                       </div>
                     </>
                   )}

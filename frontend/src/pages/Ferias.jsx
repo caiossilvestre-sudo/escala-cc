@@ -7,6 +7,47 @@ import { todayISO, formatBR, addDays } from "../lib/helpers";
 const STAGES = ["solicitada", "enviado_rh", "aprovada"];
 const STAGE_LABEL = { solicitada: "Solicitado", enviado_rh: "Enviado ao RH", aprovada: "Retorno recebido" };
 
+function gerarTextoRH(f, nome) {
+  const dias = Math.round((new Date(f.data_fim) - new Date(f.data_inicio)) / 86400000) + 1;
+  return `Prezados RH,
+
+Solicito o agendamento de férias do(a) colaborador(a) abaixo:
+
+Nome: ${nome}
+Início: ${formatBR(f.data_inicio)}
+Fim: ${formatBR(f.data_fim)}
+Total de dias: ${dias}
+Retorno ao trabalho: ${formatBR(addDays(f.data_fim, 1))}
+
+Aguardo confirmação.`;
+}
+
+function BotaoTextoRH({ f, nome, showToast }) {
+  const [aberto, setAberto] = useState(false);
+  const texto = gerarTextoRH(f, nome);
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast("Texto copiado — já pode colar no e-mail.");
+    } catch {
+      showToast("Não consegui copiar automaticamente, seleciona o texto manualmente.");
+    }
+  };
+
+  return (
+    <>
+      <button className="btn btn-ghost btn-sm" onClick={() => setAberto((a) => !a)}>{aberto ? "Fechar texto" : "Gerar texto pro RH"}</button>
+      {aberto && (
+        <div style={{ marginTop: 8 }}>
+          <textarea readOnly rows={8} value={texto} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: 10, fontSize: 12.5, fontFamily: "inherit", background: "#FAFBFC" }} onFocus={(e) => e.target.select()} />
+          <button className="btn btn-primary btn-sm" style={{ marginTop: 6 }} onClick={copiar}>Copiar texto</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function FeriasAdmin() {
   const { data, loading, error, reload } = useApiList("/ferias");
   const colaboradores = useApiList("/colaboradores");
@@ -74,6 +115,9 @@ export function FeriasAdmin() {
                           )}
                           <button className="btn btn-ghost btn-sm" onClick={() => remover(f.id)}>Excluir</button>
                         </div>
+                        <div style={{ marginTop: 8 }}>
+                          <BotaoTextoRH f={f} nome={nome(f.colaborador_id)} showToast={showToast} />
+                        </div>
                       </div>
                     );
                   })}
@@ -118,6 +162,15 @@ export default function MinhasFerias({ user }) {
       showToast("Solicitação de férias enviada.");
       reload();
     } catch (e) { showToast(e.message); }
+  };
+
+  const excluir = async (id) => {
+    if (!window.confirm("Excluir esta solicitação de férias? Essa ação não pode ser desfeita.")) return;
+    try {
+      await api.delete(`/ferias/${id}`);
+      showToast("Solicitação excluída.");
+      reload();
+    } catch (e) { showToast(e.message || "Erro ao excluir."); }
   };
 
   const stageIndex = (status) => (status === "ajustar" || status === "rejeitada" ? -1 : STAGES.indexOf(status));
@@ -166,6 +219,7 @@ export default function MinhasFerias({ user }) {
                       </>
                     )}
                     {f.nota_admin && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: rejeitadoOuAjuste ? 8 : 0 }}>Observação do admin: {f.nota_admin}</div>}
+                    {f.status === "solicitada" && <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => excluir(f.id)}>Excluir solicitação</button>}
                   </div>
                 );
               })}

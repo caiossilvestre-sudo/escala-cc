@@ -18,7 +18,25 @@ def listar(db: Session = Depends(get_db), user: Colaborador = Depends(get_curren
     elif user.role == "supervisor":
         colegas_ids = [c.id for c in db.query(Colaborador.id).filter(Colaborador.equipe.in_(equipes_do_supervisor(user)))]
         q = q.filter(Atestado.colaborador_id.in_(colegas_ids))
-    return q.order_by(Atestado.data_inicio.desc()).all()
+    resultados = q.order_by(Atestado.data_inicio.desc()).all()
+
+    # Privacidade: o motivo/observação do atestado é informação de saúde —
+    # só a própria pessoa (e quem gerencia, admin/supervisor) enxerga o
+    # motivo de verdade. Colegas só sabem que existe um atestado ali, sem
+    # saber o porquê.
+    if user.role == "colaborador":
+        saida = []
+        for a in resultados:
+            if a.colaborador_id == user.id:
+                saida.append(a)
+            else:
+                saida.append(AtestadoOut(
+                    id=a.id, colaborador_id=a.colaborador_id,
+                    data_inicio=a.data_inicio, data_fim=a.data_fim,
+                    motivo="Atestado registrado",
+                ))
+        return saida
+    return resultados
 
 
 @router.post("", response_model=AtestadoOut, status_code=status.HTTP_201_CREATED)

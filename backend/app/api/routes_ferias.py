@@ -41,13 +41,26 @@ def solicitar(body: FeriasIn, request: Request, db: Session = Depends(get_db), u
 
 
 @router.delete("/{ferias_id}")
-def remover(ferias_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+def remover(ferias_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
+    """Admin/supervisor podem excluir qualquer solicitação (em qualquer
+    status) dentro do próprio escopo. O colaborador pode excluir a PRÓPRIA
+    solicitação, mas só enquanto ainda estiver em 'solicitada' — depois que
+    o admin já mandou pro RH ('enviado_rh' em diante), só admin/supervisor
+    decidem, pra não sumir uma solicitação que já está em andamento."""
     alvo = db.get(Ferias, ferias_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação de férias não encontrada.")
-    dono = db.get(Colaborador, alvo.colaborador_id)
-    if dono:
-        check_escopo_equipe(user, dono.equipe)
+
+    if user.role in ("admin", "supervisor"):
+        dono = db.get(Colaborador, alvo.colaborador_id)
+        if dono:
+            check_escopo_equipe(user, dono.equipe)
+    elif alvo.colaborador_id == user.id:
+        if alvo.status != "solicitada":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Só é possível excluir enquanto a solicitação ainda não foi enviada ao RH — fale com seu supervisor/admin.")
+    else:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Você só pode excluir as próprias solicitações.")
+
     db.delete(alvo)
     db.commit()
     log_action(db, request, user, "remover_ferias", "ferias", ferias_id)

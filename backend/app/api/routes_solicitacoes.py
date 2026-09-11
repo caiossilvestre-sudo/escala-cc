@@ -133,6 +133,31 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
     return nova
 
 
+@router.delete("/{solicitacao_id}", status_code=status.HTTP_204_NO_CONTENT)
+def excluir(solicitacao_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(get_current_colaborador)):
+    """Colaborador pode excluir a PRÓPRIA solicitação, só enquanto estiver
+    pendente (uma vez aprovada/rejeitada, cabe a admin/supervisor decidir).
+    Admin/supervisor podem excluir qualquer uma dentro do próprio escopo,
+    em qualquer status."""
+    alvo = db.get(SolicitacaoFolga, solicitacao_id)
+    if not alvo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação não encontrada.")
+
+    if user.role in ("admin", "supervisor"):
+        dono = db.get(Colaborador, alvo.colaborador_id)
+        if dono:
+            check_escopo_equipe(user, dono.equipe)
+    elif alvo.colaborador_id == user.id:
+        if alvo.status != "pendente":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Só é possível excluir uma solicitação enquanto ela está pendente — fale com seu supervisor/admin se já foi decidida.")
+    else:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Você só pode excluir as próprias solicitações.")
+
+    db.delete(alvo)
+    db.commit()
+    log_action(db, request, user, "excluir_solicitacao_folga", "solicitacao_folga", solicitacao_id)
+
+
 @router.post("/{solicitacao_id}/reabrir", response_model=SolicitacaoOut)
 def reabrir(solicitacao_id: str, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
     """Volta uma solicitação já aprovada/rejeitada para 'pendente', pra permitir
