@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
 from app.db.models import Colaborador, Plantao, SolicitacaoFolga
 from app.db.session import get_db
-from app.logic import cota_disponivel_para_data, dia_util_para_folga, horarios_similares, prazo_folga_plantao, resumo_cotas_sindicato
+from app.logic import cota_disponivel_para_data, dia_util_para_folga, horarios_similares, prazo_folga_plantao, resumo_cotas_sindicato, setores_correlacionados_para_folga
 from app.schemas import ResolverSolicitacaoIn, ResumoCotasSindicatoOut, SolicitacaoIn, SolicitacaoOut
 
 router = APIRouter(prefix="/solicitacoes", tags=["solicitacoes"])
@@ -95,7 +95,8 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
         if not ok:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, motivo)
 
-    colegas = db.query(Colaborador).filter(Colaborador.id != alvo.id).all()
+    setores_relevantes = setores_correlacionados_para_folga(alvo.equipe)
+    colegas = db.query(Colaborador).filter(Colaborador.id != alvo.id, Colaborador.equipe.in_(setores_relevantes)).all()
     colegas_similares_ids = {
         c.id for c in colegas
         if horarios_similares(alvo.horario_inicio, alvo.horario_fim, c.horario_inicio, c.horario_fim)

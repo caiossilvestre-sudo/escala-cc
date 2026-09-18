@@ -162,6 +162,23 @@ def horarios_similares(a_ini: str, a_fim: str, b_ini: str, b_fim: str, buffer_mi
     return abs(minutos_do_dia(a_ini) - minutos_do_dia(b_ini)) <= buffer_min
 
 
+# --- Setores que se correlacionam pra checagem de conflito de horário de
+# folga. Por padrão, cada setor só é comparado com ele mesmo — a exceção é
+# Suporte N2 e Monitoramento, que cobrem funções relacionadas e por isso
+# entram juntos nessa checagem específica (mas continuam setores distintos
+# em tudo o mais: cadastro, escopo de supervisor, relatórios etc.).
+GRUPOS_CORRELACAO_FOLGA = [
+    {"Suporte N2", "Monitoramento"},
+]
+
+
+def setores_correlacionados_para_folga(equipe: str) -> set[str]:
+    for grupo in GRUPOS_CORRELACAO_FOLGA:
+        if equipe in grupo:
+            return grupo
+    return {equipe}
+
+
 def domingos_no_mes(mes: str) -> list[date]:
     ano, mes_num = (int(p) for p in mes.split("-"))
     total_dias = calendar.monthrange(ano, mes_num)[1]

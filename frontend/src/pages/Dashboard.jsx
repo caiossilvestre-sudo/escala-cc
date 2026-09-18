@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TopBar, Pill, Spinner, ErrorBox } from "../components/UI";
 import { useApiList } from "../lib/hooks";
 import { currentMonthKey, monthLabel, formatBR, formatBRDia, todayISO, addDays, rangeOverlapsDate, TIPO_LABEL } from "../lib/helpers";
+
+/** Atualiza a cada minuto, pra os painéis de "expediente agora" e "chegando
+ * em breve" se recalcularem sozinhos sem precisar recarregar a página —
+ * assim que bater o horário de entrada, a pessoa passa de um pro outro. */
+function useRelogioVivo(intervaloMs = 60000) {
+  const [, forcarAtualizacao] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forcarAtualizacao((n) => n + 1), intervaloMs);
+    return () => clearInterval(id);
+  }, [intervaloMs]);
+}
 
 /** Compara horário atual contra um intervalo, cobrindo turnos que cruzam a
  * meia-noite (ex: 19:00–07:00, comum no 12x36 do Monitoramento). */
@@ -10,7 +21,40 @@ function estaNoHorario(horaAtual, inicio, fim) {
   return horaAtual >= inicio || horaAtual <= fim; // turno vira a noite
 }
 
+function minutosDoDia(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Quantas horas faltam pra começar um turno com início `inicio`, a partir
+ * de `horaAtual` — sempre positivo, olhando pra frente (se já passou hoje,
+ * assume que é o de amanhã). */
+function horasAteComecar(horaAtual, inicio) {
+  const diffMin = minutosDoDia(inicio) - minutosDoDia(horaAtual);
+  return (diffMin < 0 ? diffMin + 24 * 60 : diffMin) / 60;
+}
+
+/** O turno "de referência" de uma pessoa numa data específica — plantão real
+ * (se existir), o cálculo do ciclo 12x36 (se aplicável), ou a escala normal
+ * dela — sem ainda considerar folga/atestado/férias aprovados nesse dia.
+ * Retorna null se ela simplesmente não trabalha nesse dia (folga do ciclo,
+ * ou domingo/feriado sem plantão pra quem não é 12x36). */
+function turnoDoDia(c, dataStr, plantoes, diaEspecialNessaData) {
+  const plantao = plantoes.find((p) => p.colaborador_id === c.id && p.data === dataStr);
+  if (plantao) return { inicio: plantao.horario_inicio, fim: plantao.horario_fim, tipo: `Plantão — ${plantao.tipo || ""}` };
+
+  if (c.equipe === "Monitoramento" && c.escala_tipo === "12x36" && c.ciclo_12x36_inicio && dataStr >= c.ciclo_12x36_inicio) {
+    const diasDesdeInicio = Math.round((new Date(dataStr + "T00:00:00") - new Date(c.ciclo_12x36_inicio + "T00:00:00")) / 86400000);
+    if (diasDesdeInicio % 2 === 0) return { inicio: c.horario_inicio, fim: c.horario_fim, tipo: c.equipe };
+    return null; // folga do ciclo — feriado não muda nada pra essa equipe
+  }
+
+  if (diaEspecialNessaData) return null; // domingo/feriado sem plantão, pra quem não é 12x36
+  return { inicio: c.horario_inicio, fim: c.horario_fim, tipo: c.equipe };
+}
+
 function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados }) {
+  useRelogioVivo();
   const hoje = todayISO();
   const agora = new Date();
   const horaAtual = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
@@ -115,6 +159,69 @@ function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, f
   );
 }
 
+function ChegandoEmBreve({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados, janelaHoras = 2 }) {
+  useRelogioVivo();
+  const hoje = todayISO();
+  const agora = new Date();
+  const horaAtual = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
+  const diaSemana = agora.getDay();
+  const feriadoHoje = feriados.find((f) => f.data === hoje && (f.tipo === "obrigatorio" || f.trabalha));
+  const diaEspecial = diaSemana === 0 || !!feriadoHoje;
+
+  const lista = [];
+  for (const c of colaboradores) {
+    if (c.role === "admin") continue;
+
+    const turno = turnoDoDia(c, hoje, plantoes, diaEspecial);
+    if (!turno) continue; // não trabalha hoje (folga do ciclo, ou dia sem plantão)
+
+    // já está em expediente agora? então não é "chegando em breve", já chegou.
+    const cruza = turno.fim < turno.inicio;
+    const jaComecou = cruza ? (horaAtual >= turno.inicio || horaAtual <= turno.fim) : estaNoHorario(horaAtual, turno.inicio, turno.fim);
+    if (jaComecou) continue;
+
+    const temFolga = solicitacoes.some((s) => s.colaborador_id === c.id && s.status === "aprovada" && s.data_solicitada === hoje);
+    const temAtestado = atestados.some((a) => a.colaborador_id === c.id && rangeOverlapsDate(hoje, a.data_inicio, a.data_fim));
+    const temFerias = ferias.some((f) => f.colaborador_id === c.id && f.status === "aprovada" && rangeOverlapsDate(hoje, f.data_inicio, f.data_fim));
+    if (temFolga || temAtestado || temFerias) continue;
+
+    const faltam = horasAteComecar(horaAtual, turno.inicio);
+    if (faltam > 0 && faltam <= janelaHoras) {
+      lista.push({ colaborador: c, inicio: turno.inicio, fim: turno.fim, tipo: turno.tipo, faltam });
+    }
+  }
+  lista.sort((a, b) => a.faltam - b.faltam);
+
+  const formatarFaltam = (h) => {
+    const totalMin = Math.round(h * 60);
+    const hh = Math.floor(totalMin / 60), mm = totalMin % 60;
+    if (hh === 0) return `em ${mm} min`;
+    if (mm === 0) return `em ${hh}h`;
+    return `em ${hh}h${String(mm).padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="section-title">Chegando em breve (próximas {janelaHoras}h)</div>
+      {lista.length === 0 ? (
+        <div className="empty">Ninguém com entrada prevista nas próximas {janelaHoras} horas.</div>
+      ) : (
+        <table className="tbl">
+          <thead><tr><th>Nome</th><th>Setor</th><th>Horário</th><th>Entrada</th></tr></thead>
+          <tbody>{lista.map((x) => (
+            <tr key={x.colaborador.id}>
+              <td>{x.colaborador.nome}</td>
+              <td><Pill status="pendente">{x.tipo}</Pill></td>
+              <td className="mono">{x.inicio}–{x.fim}</td>
+              <td style={{ color: "var(--text-muted)" }}>{formatarFaltam(x.faltam)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
   const [mes, setMes] = useState(currentMonthKey());
   const [equipeFiltro, setEquipeFiltro] = useState("Todas");
@@ -189,6 +296,7 @@ export default function Dashboard({ onNavigate }) {
             </div>
 
             <EmExpedienteAgora colaboradores={colaboradoresFiltrados} plantoes={plantoes.data} solicitacoes={solicitacoes.data} atestados={atestados.data} ferias={ferias.data} feriados={feriados.data} />
+            <ChegandoEmBreve colaboradores={colaboradoresFiltrados} plantoes={plantoes.data} solicitacoes={solicitacoes.data} atestados={atestados.data} ferias={ferias.data} feriados={feriados.data} />
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="section-title">Plantões do mês</div>
