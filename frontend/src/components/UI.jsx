@@ -74,7 +74,7 @@ export function ShiftStrip({ colaboradorId, monthKey, plantoes, solicitacoes, at
     if (plantao) { status = "plantao"; label = `Plantão ${plantao.horario_inicio}–${plantao.horario_fim}`; }
     else if (feriasHit) { status = "ferias"; label = "Férias"; }
     else if (atestado) { status = "atestado"; label = "Atestado"; }
-    else if (folga) { status = folga.tipo; label = folga.tipo === "folga_sindicato" ? "Folga normal (sindicato)" : "Folga de plantão"; }
+    else if (folga) { status = folga.tipo; label = folga.tipo === "folga_sindicato" ? "Folga (sindicato)" : "Folga de plantão"; }
     return { day, dateStr, status, label };
   });
   return (
@@ -116,7 +116,7 @@ export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestado
       <div className="legend" style={{ marginBottom: 14 }}>
         <span className="item"><span className="sw" style={{ background: "#2F6FE8" }} />Plantão</span>
         <span className="item"><span className="sw" style={{ background: "#E8828A" }} />Folga (de plantão)</span>
-        <span className="item"><span className="sw" style={{ background: "#A32E42" }} />Folga normal (sindicato)</span>
+        <span className="item"><span className="sw" style={{ background: "#A32E42" }} />Folga (sindicato)</span>
         <span className="item"><span className="sw" style={{ background: "#E8972E" }} />Atestado</span>
         <span className="item"><span className="sw" style={{ background: "#8A8F98" }} />Férias</span>
         <span className="item"><span className="sw" style={{ background: "#5B5F6B" }} />Feriado (sem plantão)</span>

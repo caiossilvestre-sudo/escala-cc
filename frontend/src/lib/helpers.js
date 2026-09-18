@@ -137,28 +137,30 @@ export function prazoFolgaPlantao(dataPlantaoStr, feriados) {
   return atual;
 }
 
-export const TIPO_LABEL = { folga_plantao: "Folga de plantão", folga_sindicato: "Folga normal (sindicato)" };
+export const TIPO_LABEL = { folga_plantao: "Folga de plantão", folga_sindicato: "Folga (sindicato)" };
 
 /** Determina o que mostrar numa célula do cronograma para um colaborador+dia. */
 export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, atestados, ferias, colaboradoresById, feriadosPorData) {
-  const plantao = plantoes.find((p) => p.colaborador_id === colaboradorId && p.data === dateStr);
-  if (plantao) {
-    return { label: "P", bg: "#DCE8FB", fg: "#1E4FA0", title: `Plantão ${plantao.horario_inicio}–${plantao.horario_fim} (${plantao.tipo || ""})` };
+  // Ciclo 12x36 (Monitoramento): quem está nesse ciclo não mostra "P" de
+  // plantão nos dias de trabalho — fica em branco mesmo (só aparece algo se
+  // tiver folga/atestado/férias de verdade registrado nesse dia, o que é
+  // checado mais abaixo). Só o dia de folga do próprio ciclo aparece, como "OFF".
+  const colaborador = colaboradoresById ? colaboradoresById[colaboradorId] : null;
+  const noCiclo12x36 = colaborador && colaborador.equipe === "Monitoramento" && colaborador.escala_tipo === "12x36" && colaborador.ciclo_12x36_inicio;
+
+  if (!noCiclo12x36) {
+    const plantao = plantoes.find((p) => p.colaborador_id === colaboradorId && p.data === dateStr);
+    if (plantao) {
+      return { label: "P", bg: "#DCE8FB", fg: "#1E4FA0", title: `Plantão ${plantao.horario_inicio}–${plantao.horario_fim} (${plantao.tipo || ""})` };
+    }
   }
   const feriasHit = ferias.find((f) => f.colaborador_id === colaboradorId && f.status === "aprovada" && rangeOverlapsDate(dateStr, f.data_inicio, f.data_fim));
   if (feriasHit) return { label: "FÉR", bg: "#E4E5E8", fg: "#4B4F58", title: "Férias" };
   const folga = solicitacoes.find((s) => s.colaborador_id === colaboradorId && s.status === "aprovada" && s.data_solicitada === dateStr);
-  if (folga && folga.tipo === "folga_sindicato") return { label: "F", bg: "#A32E42", fg: "#FFFFFF", title: "Folga normal (sindicato)" };
+  if (folga && folga.tipo === "folga_sindicato") return { label: "FS", bg: "#A32E42", fg: "#FFFFFF", title: "Folga (sindicato)" };
   if (folga) return { label: "F", bg: "#FBE3E5", fg: "#B23A4C", title: TIPO_LABEL[folga.tipo] };
   const atestado = atestados.find((a) => a.colaborador_id === colaboradorId && rangeOverlapsDate(dateStr, a.data_inicio, a.data_fim));
   if (atestado) return { label: "AT", bg: "#FCEEDC", fg: "#9A5F14", title: "Atestado" };
-
-  // Ciclo 12x36 (Monitoramento): a escala roda dia sim, dia não o ano
-  // inteiro, sem parar em feriado (o feriado não folga essa equipe). Por
-  // isso, pra quem está nesse ciclo, o marcador de "feriado" nem entra em
-  // jogo — só a conta do ciclo decide se o dia é trabalho ou folga.
-  const colaborador = colaboradoresById ? colaboradoresById[colaboradorId] : null;
-  const noCiclo12x36 = colaborador && colaborador.equipe === "Monitoramento" && colaborador.escala_tipo === "12x36" && colaborador.ciclo_12x36_inicio;
 
   if (!noCiclo12x36) {
     const feriado = feriadosPorData ? feriadosPorData[dateStr] : null;
@@ -170,9 +172,8 @@ export function eventoDoDia(colaboradorId, dateStr, plantoes, solicitacoes, ates
     if (diasDesdeInicio % 2 !== 0) {
       return { label: "OFF", bg: "#EEF0F3", fg: "#6B7280", title: "Folga do ciclo 12x36" };
     }
-    // Dia de trabalho pelo ciclo, sem plantão real cadastrado — o próprio
-    // padrão dia sim/dia não já garante isso todo mês, sem precisar gerar nada.
-    return { label: "P", bg: "#DCE8FB", fg: "#1E4FA0", title: `Plantão do ciclo 12x36, ${colaborador.horario_inicio}–${colaborador.horario_fim} (calculado automaticamente)` };
+    // Dia de trabalho pelo ciclo — fica em branco de propósito, sem "P".
+    return null;
   }
   return null;
 }

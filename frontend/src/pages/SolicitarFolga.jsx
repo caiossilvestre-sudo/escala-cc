@@ -74,7 +74,7 @@ export default function SolicitarFolga({ user }) {
                 <label>Tipo</label>
                 <select value={tipo} onChange={(e) => { setTipo(e.target.value); setConflito(null); }}>
                   <option value="folga_plantao">Folga de plantão</option>
-                  <option value="folga_sindicato">Folga normal (sindicato)</option>
+                  <option value="folga_sindicato">Folga (sindicato)</option>
                 </select>
               </div>
 
