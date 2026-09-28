@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
-import { useApiList, useToast } from "../lib/hooks";
+import { TopBar, Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
+import { useApiList, useToast, useConfirm } from "../lib/hooks";
 import { api } from "../api/client";
 import { todayISO, formatBR, addDays } from "../lib/helpers";
 
@@ -52,6 +52,7 @@ export function FeriasAdmin() {
   const { data, loading, error, reload } = useApiList("/ferias");
   const colaboradores = useApiList("/colaboradores");
   const { toast, showToast } = useToast();
+  const { confirm, confirmState, resolveConfirm } = useConfirm();
   const [nota, setNota] = useState({});
 
   const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
@@ -67,7 +68,7 @@ export function FeriasAdmin() {
   };
 
   const remover = async (id) => {
-    if (!window.confirm("Excluir esta solicitação de férias? Essa ação não pode ser desfeita.")) return;
+    if (!(await confirm("Excluir esta solicitação de férias? Essa ação não pode ser desfeita."))) return;
     try {
       await api.delete(`/ferias/${id}`);
       showToast("Solicitação de férias excluída.");
@@ -142,6 +143,7 @@ export function FeriasAdmin() {
         )}
       </div>
       <Toast toast={toast} />
+      <ConfirmModal state={confirmState} onResolve={resolveConfirm} />
     </>
   );
 }
@@ -149,6 +151,7 @@ export function FeriasAdmin() {
 export default function MinhasFerias({ user }) {
   const { data, loading, error, reload } = useApiList("/ferias");
   const { toast, showToast } = useToast();
+  const { confirm, confirmState, resolveConfirm } = useConfirm();
   const [dataInicio, setDataInicio] = useState(todayISO());
   const [dias, setDias] = useState(30);
 
@@ -165,7 +168,7 @@ export default function MinhasFerias({ user }) {
   };
 
   const excluir = async (id) => {
-    if (!window.confirm("Excluir esta solicitação de férias? Essa ação não pode ser desfeita.")) return;
+    if (!(await confirm("Excluir esta solicitação de férias? Essa ação não pode ser desfeita."))) return;
     try {
       await api.delete(`/ferias/${id}`);
       showToast("Solicitação excluída.");
@@ -228,6 +231,7 @@ export default function MinhasFerias({ user }) {
         </div>
       </div>
       <Toast toast={toast} />
+      <ConfirmModal state={confirmState} onResolve={resolveConfirm} />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoDia, mapaFeriadosPorData } from "../lib/helpers";
+import { formatBR, weekdayAbbrev, daysInMonth, monthLabel, shiftMonth, eventoDoDia, mapaFeriadosPorData, ehEquipeLideranca, LIDERANCA_LABEL } from "../lib/helpers";
 
 /** Select que também permite digitar um valor novo (ex: adicionar um setor ou uma escala que ainda não existe). */
 export function EditableSelect({ value, onChange, options, placeholder = "Novo valor" }) {
@@ -53,6 +53,25 @@ export function ErrorBox({ error }) {
   return <div className="warn-box" style={{ background: "#FBE2E5", borderColor: "#F3C3CB", color: "#A32E42" }}>{error}</div>;
 }
 
+/** Popup de confirmação do próprio sistema — substitui window.confirm(),
+ * que abre uma caixa nativa do navegador, sem estilo e sem o visual do app.
+ * Usado junto com o hook useConfirm() (ver lib/hooks.js). */
+export function ConfirmModal({ state, onResolve }) {
+  if (!state) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(20,22,28,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 22, maxWidth: 400, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.25)" }}>
+        {state.title && <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{state.title}</div>}
+        <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--text)" }}>{state.message}</div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+          <button className="btn btn-ghost" onClick={() => onResolve(false)}>{state.cancelLabel || "Cancelar"}</button>
+          <button className={`btn ${state.danger === false ? "btn-primary" : "btn-danger"}`} onClick={() => onResolve(true)}>{state.confirmLabel || "Confirmar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ShiftStrip({ colaboradorId, monthKey, plantoes, solicitacoes, atestados, ferias }) {
   const total = daysInMonth(monthKey);
   const colorFor = (status) => {
@@ -95,7 +114,11 @@ export function ShiftStrip({ colaboradorId, monthKey, plantoes, solicitacoes, at
 export function CronogramaGrid({ colaboradores, plantoes, solicitacoes, atestados, ferias, feriados, mesFiltro, setMesFiltro, equipeFiltro, setEquipeFiltro, equipesOptions, showEquipeSelector }) {
   const colaboradoresById = Object.fromEntries(colaboradores.map((c) => [c.id, c]));
   const feriadosPorData = mapaFeriadosPorData(feriados);
-  const lista = colaboradores.filter((c) => (!equipeFiltro || equipeFiltro === "Todas" ? true : c.equipe === equipeFiltro));
+  const lista = colaboradores.filter((c) => {
+    if (!equipeFiltro || equipeFiltro === "Todas") return true;
+    if (equipeFiltro === LIDERANCA_LABEL) return ehEquipeLideranca(c.equipe);
+    return c.equipe === equipeFiltro;
+  });
   const total = daysInMonth(mesFiltro);
   const dias = Array.from({ length: total }, (_, i) => i + 1);
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
-import { useApiList, useToast } from "../lib/hooks";
+import { TopBar, Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
+import { useApiList, useToast, useConfirm } from "../lib/hooks";
 import { api } from "../api/client";
 import { todayISO, formatBR, formatBRDia, addDays, prazoFolgaPlantao, TIPO_LABEL } from "../lib/helpers";
 
@@ -10,6 +10,7 @@ export default function SolicitarFolga({ user }) {
   const cotas = useApiList("/solicitacoes/cotas-sindicato");
   const feriados = useApiList("/feriados");
   const { toast, showToast } = useToast();
+  const { confirm, confirmState, resolveConfirm } = useConfirm();
 
   const [tipo, setTipo] = useState("folga_plantao");
   const [plantaoId, setPlantaoId] = useState("");
@@ -50,7 +51,7 @@ export default function SolicitarFolga({ user }) {
   };
 
   const excluir = async (id) => {
-    if (!window.confirm("Excluir esta solicitação? Essa ação não pode ser desfeita.")) return;
+    if (!(await confirm("Excluir esta solicitação? Essa ação não pode ser desfeita."))) return;
     try {
       await api.delete(`/solicitacoes/${id}`);
       showToast("Solicitação excluída.");
@@ -93,7 +94,7 @@ export default function SolicitarFolga({ user }) {
                       </div>
                       {plantaoEscolhido && (
                         <div className="info-box">
-                          Prazo pra agendar essa folga: até {formatBR(prazoFolgaPlantao(plantaoEscolhido.data, feriados.data))} (10 dias úteis, sem contar domingo nem feriado). Domingo e feriado também não valem como data de folga.
+                          Prazo pra agendar essa folga: até {formatBR(prazoFolgaPlantao(plantaoEscolhido.data, feriados.data))} (8 dias úteis, sem contar domingo nem feriado). Domingo e feriado também não valem como data de folga.
                         </div>
                       )}
                       <div className="field" style={{ maxWidth: 220, marginBottom: 12 }}>
@@ -149,6 +150,7 @@ export default function SolicitarFolga({ user }) {
         )}
       </div>
       <Toast toast={toast} />
+      <ConfirmModal state={confirmState} onResolve={resolveConfirm} />
     </>
   );
 }

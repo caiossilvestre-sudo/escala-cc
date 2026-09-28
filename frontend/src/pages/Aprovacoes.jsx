@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { TopBar, Pill, Spinner, ErrorBox, Toast } from "../components/UI";
-import { useApiList, useToast } from "../lib/hooks";
+import { TopBar, Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
+import { useApiList, useToast, useConfirm } from "../lib/hooks";
 import { api } from "../api/client";
 import { formatBR, formatBRDia, weekdayFull, TIPO_LABEL } from "../lib/helpers";
 
@@ -36,6 +36,7 @@ export default function Aprovacoes() {
   const colaboradores = useApiList("/colaboradores");
   const plantoes = useApiList("/plantoes");
   const { toast, showToast } = useToast();
+  const { confirm, confirmState, resolveConfirm } = useConfirm();
   const [rejeitandoId, setRejeitandoId] = useState(null);
   const [motivo, setMotivo] = useState("");
 
@@ -53,7 +54,7 @@ export default function Aprovacoes() {
   };
 
   const reabrir = async (id) => {
-    if (!window.confirm("Reabrir esta solicitação para poder decidir de novo?")) return;
+    if (!(await confirm("Reabrir esta solicitação para poder decidir de novo?", { danger: false, confirmLabel: "Reabrir" }))) return;
     try {
       await api.post(`/solicitacoes/${id}/reabrir`);
       showToast("Solicitação reaberta — ela volta pra lista de pendentes.");
@@ -118,6 +119,7 @@ export default function Aprovacoes() {
         </div>
       </div>
       <Toast toast={toast} />
+      <ConfirmModal state={confirmState} onResolve={resolveConfirm} />
     </>
   );
 }

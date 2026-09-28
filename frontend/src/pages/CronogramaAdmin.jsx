@@ -3,7 +3,7 @@ import { TopBar, Spinner, ErrorBox, Toast } from "../components/UI";
 import { CronogramaGrid } from "../components/UI";
 import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
-import { currentMonthKey, todayISO } from "../lib/helpers";
+import { currentMonthKey, todayISO, ehEquipeLideranca, LIDERANCA_LABEL } from "../lib/helpers";
 
 function NovaAusenciaForm({ colaboradores, onSubmit, onCancel }) {
   const [form, setForm] = useState({
@@ -71,9 +71,17 @@ export default function CronogramaAdmin() {
   const error = colaboradores.error || plantoes.error || solicitacoes.error || atestados.error || ferias.error || feriados.error;
 
   // Só considera "setor de verdade" quem tem pelo menos um colaborador comum
-  // nele — assim o setor "casa" de um admin/supervisor/visualizador (que é só
-  // um rótulo de perfil) não aparece nos filtros como se fosse um time real.
-  const equipesOperacionais = Array.from(new Set(colaboradores.data.filter((c) => c.role === "colaborador" || c.role === "supervisor").map((c) => c.equipe))).filter(Boolean);
+  // nele — assim o setor "casa" de um admin/visualizador (que é só um rótulo
+  // de perfil) não aparece nos filtros como se fosse um time real. Setores de
+  // liderança (Supervisão, Líder, Coordenador, Gerência) ficam agrupados num
+  // único filtro "Liderança" em vez de poluir a lista um por um — o rótulo
+  // individual de cada pessoa continua aparecendo normalmente na grade.
+  const equipesBrutas = Array.from(new Set(colaboradores.data.filter((c) => c.role === "colaborador" || c.role === "supervisor").map((c) => c.equipe))).filter(Boolean);
+  const temLideranca = equipesBrutas.some(ehEquipeLideranca);
+  const equipesOperacionais = [
+    ...equipesBrutas.filter((e) => !ehEquipeLideranca(e)),
+    ...(temLideranca ? [LIDERANCA_LABEL] : []),
+  ];
 
   const registrarAusencia = async (form) => {
     try {

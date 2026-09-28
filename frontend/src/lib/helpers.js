@@ -120,14 +120,14 @@ export function cicloSindicatoAtual(hoje = new Date()) {
   return mes <= 2 ? hoje.getFullYear() - 1 : hoje.getFullYear();
 }
 
-/** Espelha app/logic.py::prazo_folga_plantao — conta 6 dias úteis (pula
+/** Espelha app/logic.py::prazo_folga_plantao — conta 8 dias úteis (pula
  * domingo E feriado, onde quer que apareçam na janela), a partir do dia
  * seguinte ao plantão. */
 export function prazoFolgaPlantao(dataPlantaoStr, feriados) {
   const feriadosSet = new Set((feriados || []).map((f) => f.data));
   let contados = 0;
   let atual = dataPlantaoStr;
-  while (contados < 10) {
+  while (contados < 8) {
     atual = addDays(atual, 1);
     const d = new Date(atual + "T00:00:00");
     const ehDomingo = d.getDay() === 0;
@@ -189,6 +189,17 @@ export function mapaFeriadosPorData(feriados) {
 export const EQUIPES = ["Suporte N1", "Suporte N2", "Monitoramento"];
 export const ESCALAS = ["6x2", "5x2", "12x36", "4x2"];
 export const TURNOS = ["Manhã", "Tarde", "Noite", "Madrugada", "Supervisor"];
+
+/** Setores de liderança — não são um time operacional de verdade, então no
+ * Cronograma eles aparecem agrupados sob o filtro único "Liderança" em vez
+ * de cada um poluir a lista separado. O rótulo individual (Líder,
+ * Supervisão, etc.) continua salvo e visível na linha de cada pessoa —
+ * agrupar é só pro filtro, não apaga a identificação de quem é o quê. */
+export const EQUIPES_LIDERANCA = ["Supervisão", "Líder", "Coordenador", "Gerência"];
+export const LIDERANCA_LABEL = "Liderança";
+export function ehEquipeLideranca(equipe) {
+  return EQUIPES_LIDERANCA.includes(equipe);
+}
 
 export function checarElegibilidade(colaborador, criterio, plantoes, ferias, atestados, solicitacoes) {
   const motivos = [];

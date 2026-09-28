@@ -122,13 +122,13 @@ def cota_disponivel_para_data(db: Session, colaborador_id: str, data_alvo: date,
     return escolhida["nome"], None, None
 
 
-# --- Prazo de folga de plantão: 10 dias úteis (não conta domingo nem
+# --- Prazo de folga de plantão: 8 dias úteis (não conta domingo nem
 # feriado), contados a partir do dia seguinte ao plantão.
 
 def prazo_folga_plantao(db: Session, data_plantao: date) -> date:
     dias_uteis_contados = 0
     data_atual = data_plantao
-    while dias_uteis_contados < 10:
+    while dias_uteis_contados < 8:
         data_atual += timedelta(days=1)
         eh_domingo = data_atual.weekday() == 6
         eh_feriado = db.query(Feriado).filter(Feriado.data == data_atual).first() is not None

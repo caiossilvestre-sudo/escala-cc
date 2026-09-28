@@ -38,6 +38,10 @@ const NAV_ADMIN = [
 ];
 // Supervisor: só o operacional do próprio setor. Sem Feriados (política da
 // empresa inteira) e sem a aba de Avisos administrativa (rotina global).
+// Além de aprovar/gerenciar a própria equipe, líder/supervisor/coordenador
+// também tem as próprias solicitações (folga sindicato e férias) — assim
+// como um colaborador comum, só que sem "plantão" costuma ter menos opções
+// disponíveis na tela de solicitar folga.
 const NAV_SUPERVISOR = [
   { grupo: "Visão geral", itens: [
     { id: "dashboard", label: "Dashboard" },
@@ -53,6 +57,10 @@ const NAV_SUPERVISOR = [
     { id: "atestados", label: "Atestados" },
   ] },
   { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
+  { grupo: "Minhas solicitações", itens: [
+    { id: "solicitar-folga", label: "Solicitar folga" },
+    { id: "minhas-ferias", label: "Minhas férias" },
+  ] },
 ];
 const NAV_COLAB = [
   { grupo: "Meu dia a dia", itens: [
@@ -180,7 +188,7 @@ function Shell() {
           <div className="nav-footnote">
             {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
             {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
-            {isSupervisor && `Você gerencia colaboradores, plantões, folgas, férias e atestados — só ${user.equipes_gerenciadas?.length > 1 ? `dos setores: ${user.equipes_gerenciadas.join(", ")}` : `do seu setor (${user.equipe})`}.`}
+            {isSupervisor && `Você gerencia colaboradores, plantões, folgas, férias e atestados — só ${user.equipes_gerenciadas?.length > 1 ? `dos setores: ${user.equipes_gerenciadas.join(", ")}` : `do seu setor (${user.equipe})`}. Em "Minhas solicitações" você também pede sua própria folga (sindicato) e férias.`}
             {!isAdmin && !isViewer && !isSupervisor && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
           </div>
           <button className={activeTab === "senha" ? "active" : ""} onClick={() => setTab("senha")}>Trocar senha</button>
@@ -214,7 +222,8 @@ function Shell() {
           {activeTab === "avisos" && (showAdminPages ? <AvisosAdmin /> : <PainelAvisos />)}
           {activeTab === "meus-plantoes" && !showAdminPages && !isSupervisor && <MeusPlantoes user={user} />}
           {activeTab === "cronograma-equipe" && !showAdminPages && !isSupervisor && <CronogramaEquipe user={user} />}
-          {activeTab === "solicitar-folga" && !showAdminPages && !isSupervisor && <SolicitarFolga user={user} />}
+          {activeTab === "solicitar-folga" && !showAdminPages && <SolicitarFolga user={user} />}
+          {activeTab === "minhas-ferias" && isSupervisor && <MinhasFerias user={user} />}
           {activeTab === "senha" && <ChangePassword />}
         </fieldset>
       </main>

@@ -89,7 +89,7 @@ export function AvisosAdmin() {
       <div className="content">
         <ErrorBox error={error} />
         <div className="info-box">
-          Regras: todo dia 1º gera a lista de plantões do mês · toda segunda-feira avisa quem tem plantão naquela semana · 6 dias após o plantão (ou domingo da semana seguinte, se foi em feriado) sem folga solicitada, dispara cobrança · aniversário e tempo de casa disparam mensagem automática no dia certo. Cada aviso aparece pra pessoa assim que ela loga — se ela não marcar como lido, ele conta como "mostrado"; depois de aparecer 3 vezes sem ação, o sistema considera lido sozinho pra não incomodar. Cada pessoa só vê e só marca como lido os próprios avisos — mesmo o admin, aqui nesta tela, só está consultando, não interfere no que já foi mostrado pra ninguém.
+          Regras: todo dia 1º gera a lista de plantões do mês · toda segunda-feira avisa quem tem plantão naquela semana · 8 dias úteis após o plantão (sem contar domingo nem feriado) sem folga solicitada, dispara cobrança · aniversário e tempo de casa disparam mensagem automática no dia certo. Cada aviso aparece pra pessoa assim que ela loga — se ela não marcar como lido, ele conta como "mostrado"; depois de aparecer 3 vezes sem ação, o sistema considera lido sozinho pra não incomodar. Cada pessoa só vê e só marca como lido os próprios avisos — mesmo o admin, aqui nesta tela, só está consultando, não interfere no que já foi mostrado pra ninguém.
         </div>
 
         <div className="card" style={{ marginBottom: 16 }}>

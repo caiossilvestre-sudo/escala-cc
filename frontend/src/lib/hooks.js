@@ -51,3 +51,26 @@ export function useToast() {
   }, []);
   return { toast, showToast };
 }
+
+/** Substitui window.confirm por um popup próprio do sistema (mais bonito e
+ * consistente com o resto da tela). Uso: const { confirm, confirmState,
+ * resolveConfirm } = useConfirm(); ... if (!(await confirm("Excluir?"))) return;
+ * e renderiza <ConfirmModal state={confirmState} onResolve={resolveConfirm} />. */
+export function useConfirm() {
+  const [confirmState, setConfirmState] = useState(null);
+
+  const confirm = useCallback((message, options = {}) => {
+    return new Promise((resolve) => {
+      setConfirmState({ message, resolve, ...options });
+    });
+  }, []);
+
+  const resolveConfirm = useCallback((result) => {
+    setConfirmState((state) => {
+      state?.resolve(result);
+      return null;
+    });
+  }, []);
+
+  return { confirm, confirmState, resolveConfirm };
+}

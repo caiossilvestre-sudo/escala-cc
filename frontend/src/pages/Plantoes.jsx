@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { TopBar, Pill, Spinner, ErrorBox, Toast, EditableSelect } from "../components/UI";
-import { useApiList, useToast } from "../lib/hooks";
+import { TopBar, Pill, Spinner, ErrorBox, Toast, EditableSelect, ConfirmModal } from "../components/UI";
+import { useApiList, useToast, useConfirm } from "../lib/hooks";
 import { api } from "../api/client";
 import {
   EQUIPES, TURNOS, todayISO, formatBR, formatBRDia, addDays, monthLabel, currentMonthKey,
@@ -257,6 +257,7 @@ export default function Plantoes() {
   const solicitacoes = useApiList("/solicitacoes");
   const feriados = useApiList("/feriados");
   const { toast, showToast } = useToast();
+  const { confirm, confirmState, resolveConfirm } = useConfirm();
   const loading = templates.loading || plantoes.loading || colaboradores.loading || feriados.loading;
   const nome = (id) => colaboradores.data.find((c) => c.id === id)?.nome || "—";
   const equipeOptions = Array.from(new Set([...colaboradores.data.map((c) => c.equipe), ...templates.data.map((t) => t.equipe)])).filter(Boolean);
@@ -264,7 +265,7 @@ export default function Plantoes() {
   const confirmar = async (id) => { try { await api.post(`/plantoes/${id}/confirmar`); plantoes.reload(); } catch (e) { showToast(e.message); } };
   const reatribuir = async (id, novoId) => { try { await api.post(`/plantoes/${id}/reatribuir?novo_colaborador_id=${novoId}`); plantoes.reload(); showToast("Reatribuído."); } catch (e) { showToast(e.message); } };
   const remover = async (id) => {
-    if (!window.confirm("Remover este plantão? Essa ação não pode ser desfeita.")) return;
+    if (!(await confirm("Remover este plantão? Essa ação não pode ser desfeita."))) return;
     try {
       await api.delete(`/plantoes/${id}`);
       showToast("Plantão removido.");
@@ -316,6 +317,7 @@ export default function Plantoes() {
         )}
       </div>
       <Toast toast={toast} />
+      <ConfirmModal state={confirmState} onResolve={resolveConfirm} />
     </>
   );
 }
