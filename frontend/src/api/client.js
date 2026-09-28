@@ -1,4 +1,9 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Em produção, por padrão usa URL relativa (mesma origem da página) — assim
+// funciona tanto acessando com porta (:8043) quanto sem porta, sem depender
+// de nenhum .env no servidor. Em desenvolvimento (npm run dev), cai pro
+// backend local na 8000. VITE_API_URL, se definido, sempre tem prioridade
+// (útil pra um caso especial, mas não é mais necessário em produção).
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 /**
  * Guardamos o access token só em memória (uma variável de módulo), nunca em
