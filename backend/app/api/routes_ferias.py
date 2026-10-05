@@ -1,8 +1,11 @@
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import check_escopo_equipe, equipes_do_supervisor, get_current_colaborador, log_action, require_admin_or_supervisor
-from app.db.models import Colaborador, Ferias
+from app.core.email import enviar_email_aviso, smtp_configurado
+from app.db.models import Aviso, Colaborador, Ferias
 from app.db.session import get_db
 from app.schemas import FeriasAvancarIn, FeriasIn, FeriasOut
 
@@ -81,6 +84,32 @@ def avancar(ferias_id: str, body: FeriasAvancarIn, request: Request, db: Session
     alvo.status = body.status
     if body.nota_admin is not None:
         alvo.nota_admin = body.nota_admin
-    db.commit()
+
+    if body.status == "aprovada" and dono:
+        retorno = alvo.data_fim + timedelta(days=1)
+        mensagem = (
+            f"Suas férias de {alvo.data_inicio.strftime('%d/%m/%Y')} a {alvo.data_fim.strftime('%d/%m/%Y')} "
+            f"foram aprovadas! Retorno ao trabalho em {retorno.strftime('%d/%m/%Y')}."
+        )
+        if alvo.nota_admin:
+            mensagem += f"\nObservação: {alvo.nota_admin}"
+        aviso = Aviso(colaborador_id=dono.id, tipo="ferias_aprovada", data=date.today(), canais=["painel"], mensagem=mensagem)
+        db.add(aviso)
+        db.commit()
+        db.refresh(aviso)
+        # Mesmo padrão dos outros avisos: tenta e-mail na hora (se SMTP
+        # estiver configurado); o Teams quem busca é o próprio Power
+        # Automate, via /avisos/pendentes-teams — não precisa fazer nada
+        # aqui, só já deixa o aviso pronto pra fila.
+        if smtp_configurado():
+            sucesso, erro = enviar_email_aviso(dono.email, aviso.tipo, aviso.mensagem)
+            aviso.email_enviado = sucesso
+            aviso.email_erro = erro
+            if sucesso:
+                aviso.canais = aviso.canais + ["email"]
+            db.commit()
+    else:
+        db.commit()
+
     log_action(db, request, user, "avancar_ferias", "ferias", alvo.id, {"novo_status": body.status})
     return alvo
