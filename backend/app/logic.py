@@ -139,9 +139,10 @@ def prazo_folga_plantao(db: Session, data_plantao: date) -> date:
 
 # --- Ciclo de férias (período concessivo CLT), contado pela data de admissão:
 # a cada 12 meses de casa nascem 30 dias, e a pessoa tem os 12 meses seguintes
-# pra tirar. Considera só o ciclo mais recente já completado (o sistema não
-# tem histórico de férias de antes dele). Férias agendadas (aprovadas futuras
-# ou ainda em andamento) já abatem do saldo. Espelha
+# pra tirar. O ciclo que está fechando agora é presumido quitado (o sistema não
+# tem histórico de férias de antes dele): só entra na conta o PRÓXIMO ciclo
+# (o que vence no ano seguinte). Férias agendadas (aprovadas futuras ou ainda
+# em andamento) já abatem do saldo. Espelha
 # frontend/src/lib/helpers.js::cicloFerias.
 
 DIAS_FERIAS_POR_CICLO = 30
@@ -165,8 +166,8 @@ def ciclo_ferias(data_admissao: date | None, ferias: list, hoje: date) -> dict |
         k += 1
     if k < 0:
         return None
-    inicio = somar_meses(data_admissao, 12 * (k + 1))
-    fim = somar_meses(data_admissao, 12 * (k + 2)) - timedelta(days=1)
+    inicio = somar_meses(data_admissao, 12 * (k + 2))
+    fim = somar_meses(data_admissao, 12 * (k + 3)) - timedelta(days=1)
 
     retirados = agendados = 0
     for f in ferias:

@@ -151,16 +151,16 @@ function somarMeses(dateStr, meses) {
 
 /** Espelha app/logic.py::ciclo_ferias — ciclo de férias (período concessivo
  * CLT) contado pela data de admissão: a cada 12 meses de casa nascem 30 dias,
- * com os 12 meses seguintes pra tirar. Só o ciclo mais recente já completado
- * entra na conta; férias agendadas (aprovadas futuras ou em andamento) já
+ * com os 12 meses seguintes pra tirar. O ciclo que está fechando agora é
+ * presumido quitado; só o PRÓXIMO ciclo (vence no ano seguinte) entra na conta; férias agendadas (aprovadas futuras ou em andamento) já
  * abatem do saldo. Retorna null se ainda não completou 1 ano de casa. */
 export function cicloFerias(dataAdmissao, feriasDaPessoa, hoje) {
   if (!dataAdmissao) return null;
   let k = -1;
   while (somarMeses(dataAdmissao, 12 * (k + 2)) <= hoje) k += 1;
   if (k < 0) return null;
-  const inicio = somarMeses(dataAdmissao, 12 * (k + 1));
-  const fim = addDays(somarMeses(dataAdmissao, 12 * (k + 2)), -1);
+  const inicio = somarMeses(dataAdmissao, 12 * (k + 2));
+  const fim = addDays(somarMeses(dataAdmissao, 12 * (k + 3)), -1);
 
   let retirados = 0, agendados = 0;
   for (const f of feriasDaPessoa) {
