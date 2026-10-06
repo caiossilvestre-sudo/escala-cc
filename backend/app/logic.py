@@ -137,6 +137,53 @@ def prazo_folga_plantao(db: Session, data_plantao: date) -> date:
     return data_atual
 
 
+# --- Ciclo de férias (período concessivo CLT), contado pela data de admissão:
+# a cada 12 meses de casa nascem 30 dias, e a pessoa tem os 12 meses seguintes
+# pra tirar. Considera só o ciclo mais recente já completado (o sistema não
+# tem histórico de férias de antes dele). Férias agendadas (aprovadas futuras
+# ou ainda em andamento) já abatem do saldo. Espelha
+# frontend/src/lib/helpers.js::cicloFerias.
+
+DIAS_FERIAS_POR_CICLO = 30
+MESES_ALERTA_FERIAS = 4
+
+
+def somar_meses(d: date, meses: int) -> date:
+    total = d.year * 12 + (d.month - 1) + meses
+    ano, mes = divmod(total, 12)
+    mes += 1
+    return date(ano, mes, min(d.day, calendar.monthrange(ano, mes)[1]))
+
+
+def ciclo_ferias(data_admissao: date | None, ferias: list, hoje: date) -> dict | None:
+    """Retorna None se a pessoa ainda não completou 1 ano de casa (ou não tem
+    data de admissão). `ferias` = lista de objetos Ferias da pessoa."""
+    if not data_admissao:
+        return None
+    k = -1
+    while somar_meses(data_admissao, 12 * (k + 2)) <= hoje:
+        k += 1
+    if k < 0:
+        return None
+    inicio = somar_meses(data_admissao, 12 * (k + 1))
+    fim = somar_meses(data_admissao, 12 * (k + 2)) - timedelta(days=1)
+
+    retirados = agendados = 0
+    for f in ferias:
+        if f.status not in ("solicitada", "enviado_rh", "aprovada"):
+            continue
+        if f.data_inicio < inicio or f.data_inicio > fim:
+            continue
+        dias = (f.data_fim - f.data_inicio).days + 1
+        if f.status == "aprovada" and f.data_fim <= hoje:
+            retirados += dias
+        else:
+            agendados += dias
+    restam = max(0, DIAS_FERIAS_POR_CICLO - retirados - agendados)
+    alerta = restam > 0 and fim <= somar_meses(hoje, MESES_ALERTA_FERIAS)
+    return {"inicio": inicio, "fim": fim, "retirados": retirados, "agendados": agendados, "restam": restam, "alerta": alerta}
+
+
 def dia_util_para_folga(db: Session, data_alvo: date) -> tuple[bool, str]:
     """Domingo e feriado não são dias úteis pra agendar uma folga."""
     if data_alvo.weekday() == 6:

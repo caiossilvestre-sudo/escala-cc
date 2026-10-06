@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_colaborador, log_action, require_admin
 from app.core.email import enviar_email_aviso, smtp_configurado
-from app.db.models import Aviso, Colaborador, Configuracao, Plantao, SolicitacaoFolga
+from app.db.models import Aviso, Colaborador, Configuracao, Ferias, Plantao, SolicitacaoFolga
 from app.db.session import get_db
-from app.logic import prazo_folga_plantao
+from app.logic import ciclo_ferias, prazo_folga_plantao
 from app.schemas import AvisoOut
 
 router = APIRouter(prefix="/avisos", tags=["avisos"])
@@ -80,7 +80,8 @@ def _listar_plantoes(plantoes: list[Plantao]) -> str:
 @router.post("/gerar")
 def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Session = Depends(get_db), admin: Colaborador = Depends(require_admin)):
     """Roda as regras diárias: lista mensal (dia 1), aviso semanal (segunda),
-    cobrança de folga, aniversário natalício e aniversário de empresa.
+    cobrança de folga, aniversário natalício, aniversário de empresa e
+    lembrete mensal de férias (faltando 4 meses ou menos pro fim do ciclo).
 
     Com forcar=True, ignora a checagem de "já foi avisado" e gera de novo mesmo
     que já exista um aviso equivalente. Em produção, chame esse endpoint uma
@@ -135,6 +136,21 @@ def gerar(data_ref: date_type, request: Request, forcar: bool = False, db: Sessi
                 if forcar or not ja_avisado:
                     texto = texto_trabalho.replace("{nome}", c.nome.split(" ")[0]).replace("{anos}", str(anos))
                     novos.append(Aviso(colaborador_id=c.id, tipo="aniversario_trabalho", data=data_ref, canais=["painel"], mensagem=texto))
+
+    # Lembrete mensal de férias: faltam 4 meses ou menos pro fim do prazo do
+    # ciclo (período concessivo) e ainda há dias sem tirar nem agendar.
+    primeiro_do_mes = data_ref.replace(day=1)
+    for c in colaboradores:
+        if c.role not in ("colaborador", "supervisor"):
+            continue
+        ferias_da_pessoa = db.query(Ferias).filter(Ferias.colaborador_id == c.id).all()
+        ciclo = ciclo_ferias(c.data_admissao, ferias_da_pessoa, data_ref)
+        if not ciclo or not ciclo["alerta"]:
+            continue
+        ja_avisado = db.query(Aviso).filter(Aviso.tipo == "ferias_ciclo", Aviso.colaborador_id == c.id, Aviso.data >= primeiro_do_mes, Aviso.data <= data_ref).first()
+        if forcar or not ja_avisado:
+            novos.append(Aviso(colaborador_id=c.id, tipo="ferias_ciclo", data=data_ref, canais=["painel"],
+                                mensagem=f"Atenção: seu prazo para tirar férias termina em {ciclo['fim'].strftime('%d/%m/%Y')} e você ainda tem {ciclo['restam']} dia(s) sem agendar. Solicite em 'Minhas férias' o quanto antes."))
 
     for n in novos:
         db.add(n)

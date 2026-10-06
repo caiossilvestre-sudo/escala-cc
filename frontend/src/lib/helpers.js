@@ -137,6 +137,49 @@ export function prazoFolgaPlantao(dataPlantaoStr, feriados) {
   return atual;
 }
 
+export const DIAS_FERIAS_POR_CICLO = 30;
+export const MESES_ALERTA_FERIAS = 4;
+
+function somarMeses(dateStr, meses) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const total = y * 12 + (m - 1) + meses;
+  const ano = Math.floor(total / 12);
+  const mes = (total % 12) + 1;
+  const dia = Math.min(d, new Date(ano, mes, 0).getDate());
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+/** Espelha app/logic.py::ciclo_ferias — ciclo de férias (período concessivo
+ * CLT) contado pela data de admissão: a cada 12 meses de casa nascem 30 dias,
+ * com os 12 meses seguintes pra tirar. Só o ciclo mais recente já completado
+ * entra na conta; férias agendadas (aprovadas futuras ou em andamento) já
+ * abatem do saldo. Retorna null se ainda não completou 1 ano de casa. */
+export function cicloFerias(dataAdmissao, feriasDaPessoa, hoje) {
+  if (!dataAdmissao) return null;
+  let k = -1;
+  while (somarMeses(dataAdmissao, 12 * (k + 2)) <= hoje) k += 1;
+  if (k < 0) return null;
+  const inicio = somarMeses(dataAdmissao, 12 * (k + 1));
+  const fim = addDays(somarMeses(dataAdmissao, 12 * (k + 2)), -1);
+
+  let retirados = 0, agendados = 0;
+  for (const f of feriasDaPessoa) {
+    if (!["solicitada", "enviado_rh", "aprovada"].includes(f.status)) continue;
+    if (f.data_inicio < inicio || f.data_inicio > fim) continue;
+    const dias = Math.round((new Date(f.data_fim) - new Date(f.data_inicio)) / 86400000) + 1;
+    if (f.status === "aprovada" && f.data_fim <= hoje) retirados += dias;
+    else agendados += dias;
+  }
+  const restam = Math.max(0, DIAS_FERIAS_POR_CICLO - retirados - agendados);
+  const alerta = restam > 0 && fim <= somarMeses(hoje, MESES_ALERTA_FERIAS);
+  const meses = Math.max(1, Math.ceil((new Date(fim) - new Date(hoje)) / 86400000 / 30.4));
+  return { inicio, fim, retirados, agendados, restam, alerta, meses };
+}
+
+export function dataCompletaUmAno(dataAdmissao) {
+  return dataAdmissao ? somarMeses(dataAdmissao, 12) : null;
+}
+
 export const TIPO_LABEL = { folga_plantao: "Folga de plantão", folga_sindicato: "Folga (sindicato)" };
 
 /** Determina o que mostrar numa célula do cronograma para um colaborador+dia. */

@@ -4,7 +4,7 @@ import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
 import { todayISO, formatBR } from "../lib/helpers";
 
-const TIPO_LABEL = { mensal: "Lista mensal (dia 1º)", semanal: "Aviso semanal (segunda)", cobranca: "Cobrança de folga", aniversario: "Aniversário", aniversario_trabalho: "Aniversário de empresa", ferias_aprovada: "Férias aprovadas" };
+const TIPO_LABEL = { mensal: "Lista mensal (dia 1º)", semanal: "Aviso semanal (segunda)", cobranca: "Cobrança de folga", aniversario: "Aniversário", aniversario_trabalho: "Aniversário de empresa", ferias_aprovada: "Férias aprovadas", ferias_ciclo: "Lembrete de férias" };
 const VIA_LABEL = { manual: "clicou em marcar como lido", automatico: "visto 3x sem ação (marcado sozinho)" };
 
 function formatarDataHora(iso) {
@@ -89,7 +89,7 @@ export function AvisosAdmin() {
       <div className="content">
         <ErrorBox error={error} />
         <div className="info-box">
-          Regras: todo dia 1º gera a lista de plantões do mês · toda segunda-feira avisa quem tem plantão naquela semana · 8 dias úteis após o plantão (sem contar domingo nem feriado) sem folga solicitada, dispara cobrança · aniversário e tempo de casa disparam mensagem automática no dia certo. Cada aviso aparece pra pessoa assim que ela loga — se ela não marcar como lido, ele conta como "mostrado"; depois de aparecer 3 vezes sem ação, o sistema considera lido sozinho pra não incomodar. Cada pessoa só vê e só marca como lido os próprios avisos — mesmo o admin, aqui nesta tela, só está consultando, não interfere no que já foi mostrado pra ninguém.
+          Regras: todo dia 1º gera a lista de plantões do mês · toda segunda-feira avisa quem tem plantão naquela semana · 8 dias úteis após o plantão (sem contar domingo nem feriado) sem folga solicitada, dispara cobrança · aniversário e tempo de casa disparam mensagem automática no dia certo · quando faltarem 4 meses ou menos pro fim do prazo de férias (ciclo contado pela admissão) e ainda houver dias sem agendar, o colaborador recebe um lembrete por mês. Cada aviso aparece pra pessoa assim que ela loga — se ela não marcar como lido, ele conta como "mostrado"; depois de aparecer 3 vezes sem ação, o sistema considera lido sozinho pra não incomodar. Cada pessoa só vê e só marca como lido os próprios avisos — mesmo o admin, aqui nesta tela, só está consultando, não interfere no que já foi mostrado pra ninguém.
         </div>
 
         <div className="card" style={{ marginBottom: 16 }}>
