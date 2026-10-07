@@ -12,20 +12,16 @@ from app.ferramentas.models import FtAcesso
 
 # Catálogo de permissões, por página/tópico. A ordem é a da tela.
 PERMISSOES = {
-    "doc.ver": "Documentação · consultar",
-    "doc.editar": "Documentação · cadastrar/editar e tirar foto",
+    "doc.ver": "Documentação · consultar e exportar",
+    "doc.editar": "Documentação · cadastrar/editar e importar fotos",
     "doc.senhas": "Documentação · ver senhas e editar gravadores",
     "doc.excluir": "Documentação · excluir câmeras",
-    "referencia": "Referência",
-    "provisionamento": "Auxílio para provisionamento",
-    "diagnostico": "Diagnosticar",
-    "aovivo": "Ao vivo",
     "ft.admin": "Gerenciar permissões",
 }
 # Atalhos da tela de permissões (só preenchem as caixinhas)
 PRESETS = {
-    "n1": ["doc.ver", "doc.editar", "referencia", "provisionamento", "diagnostico"],
-    "n2": ["doc.ver", "doc.editar", "doc.senhas", "referencia", "provisionamento", "diagnostico", "aovivo"],
+    "n1": ["doc.ver", "doc.editar"],
+    "n2": ["doc.ver", "doc.editar", "doc.senhas"],
 }
 # Quem tem uma permissão de Documentação precisa conseguir consultar
 IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver"}

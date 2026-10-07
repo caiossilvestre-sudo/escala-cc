@@ -1,23 +1,26 @@
 # Módulo Ferramentas · LifeGuard Documentação — como integrar no Escala
 
-Este pacote tem **só arquivos novos e 3 arquivos completos já alterados**, nos
-mesmos caminhos do repositório `escala-cc`. Copie por cima no seu diretório
-local, faça commit + push pelo GitHub Desktop e depois `git pull` no servidor.
+O módulo é **só documentação**: cadastro das câmeras, senhas dos gravadores e
+uma foto por câmera, importada e exportada por arquivo. O servidor não roda
+captura, ffmpeg nem nada que fale com câmera.
+
+Os arquivos vão nos mesmos caminhos do repositório `escala-cc`. Copie por cima
+no seu diretório local, faça commit + push pelo GitHub Desktop e depois
+`git pull` no servidor.
 
 ## O que fica no repositório
 
 | Caminho | O que é |
 |---|---|
-| `backend/app/ferramentas/` | Tabelas (`ft_*`), rotas (`/ferramentas`), permissões por página, criptografia das senhas, fotos e o script de importação |
+| `backend/app/ferramentas/` | Tabelas (`ft_*`), rotas (`/ferramentas`), permissões, criptografia das senhas, fotos, importação da planilha |
 | `backend/app/main.py` | 2 linhas: import e `include_router` |
 | `backend/requirements.txt` | `cryptography`, `Pillow`, `openpyxl` (e `psycopg2-binary>=2.9.10`) |
 | `backend/.env.example` | 2 variáveis novas no final |
-| `frontend/src/ferramentas/` | Telas React (Documentação, Referência, Permissões e as páginas em construção) |
+| `frontend/src/ferramentas/` | Telas React: Documentação, ficha, cadastro, importar fotos, permissões |
 | `frontend/src/App.jsx` | 4 linhas para o grupo Ferramentas · LifeGuard |
 
 **Nunca no repositório (ele é público):** a planilha, o relatório de
-importação e a ponte do LifeGuard (`escala_bridge.py`, que vai no projeto do
-LifeGuard).
+importação, fotos e CSVs exportados.
 
 ---
 
@@ -99,10 +102,9 @@ const nav = ft.nav ? [...navBase, ft.nav] : navBase;
 <FerramentasPagina tab={activeTab} acesso={ft} />
 ```
 
-O grupo **Ferramentas · LifeGuard** mostra só as páginas que a pessoa tem
-permissão: Documentação, Referência, Auxílio p/ provisionamento,
-Diagnosticar e Ao vivo. Páginas novas do módulo entram em
-`ferramentas/index.js` — **não precisa mexer de novo no App.jsx**.
+O grupo **Ferramentas · LifeGuard** tem uma página só: **Documentação**. Ele
+aparece para quem tem pelo menos "consultar". Se um dia entrar outra página,
+ela vai em `ferramentas/index.js` — **não precisa mexer de novo no App.jsx**.
 
 Atenção: o `<fieldset disabled={isViewer}>` do App desabilita tudo para o
 perfil visualizador — mesmo com permissão em Ferramentas ele só consegue
@@ -202,12 +204,13 @@ linha por colaborador, uma caixinha por permissão, salva na hora (e vai para o
 
 | Permissão | Libera |
 |---|---|
-| Documentação · consultar | lista, ficha e foto |
-| Documentação · cadastrar/editar e tirar foto | cadastrar/editar câmera, atualizar a foto |
+| Documentação · consultar e exportar | lista, ficha, foto, exportar foto e lista CSV |
+| Documentação · cadastrar/editar e importar fotos | cadastrar/editar câmera, importar foto (uma ou em lote) |
 | Documentação · ver senhas e editar gravadores | mostrar senhas (auditado), gravadores e credenciais |
 | Documentação · excluir câmeras | excluir |
-| Referência / Auxílio p/ provisionamento / Diagnosticar / Ao vivo | a página correspondente |
 | Gerenciar permissões | a tela de permissões |
+
+Atalhos: **N1** = consultar + cadastrar/importar · **N2** = N1 + senhas.
 
 Admin do Escala tem tudo, sempre. Marcar qualquer permissão de Documentação
 marca "consultar" junto. Sem nenhuma caixinha, a pessoa não vê o grupo no menu.
@@ -218,55 +221,65 @@ tabela antiga `ft_permissoes` (por nível) não é mais usada — pode apagar:
 
 ---
 
-## 7. LifeGuard — captura e detecção
+## 7. Cadastro de câmeras
 
-A página chama o LifeGuard que está aberto **no computador do atendente**
-(padrão `http://127.0.0.1:5000`, editável na tela de cadastro). É ele quem
-alcança as câmeras. O LifeGuard devolve a imagem e a página manda para o
-servidor.
+"+ Nova câmera" abre o cadastro em 3 passos:
 
-No projeto do LifeGuard:
+1. **Identificar o cliente** — busca quem já está na documentação (nome,
+   contrato, ID IXC ou PPPoE) e preenche os dados; mostra quantas câmeras ele
+   já tem. Cliente novo: é só digitar.
+2. **Onde as câmeras gravam** — NVR (escolhe o gravador) ou LifeGuard (ID).
+3. **Dados das câmeras** — uma linha por câmera, "+ Adicionar câmera" / "+ 4".
+   No NVR, o próximo canal livre é sugerido. Cada linha pode ter foto e
+   "Mais dados" (porta, modelo, firmware, compressão, dias, observações).
 
-1. Copie `para_o_lifeguard/escala_bridge.py`.
-2. Onde o Flask app é criado:
-
-   ```python
-   from escala_bridge import registrar_ponte_escala
-   registrar_ponte_escala(
-       app,
-       origem_escala="https://escala-suporte.duckdns.org:8043",
-       credenciais=lambda alvo: [("admin", "senha1"), ("admin", "senha2")],  # use a lista que o LifeGuard já tem
-   )
-   ```
-
-3. `requests` precisa estar no build do PyInstaller.
-
-Rotas criadas:
-
-| Rota | Resposta |
-|---|---|
-| `GET /api/escala/ping` | `{ok, versao}` |
-| `POST /api/escala/detectar` | `{modelo, firmware, mac, compressao}`: ISAPI (Hikvision) ou CGI (Intelbras/Dahua) |
-| `POST /api/escala/snapshot` | `{imagem_base64, largura, altura}`: snapshot HTTP do NVR (por canal) ou da câmera, com RTSP+ffmpeg como plano B |
-
-A ponte já envia os cabeçalhos de CORS e o `Access-Control-Allow-Private-Network`
-que o Chrome exige para uma página https falar com o 127.0.0.1, liberados só
-para a origem do Escala.
-
-Os caminhos ISAPI/CGI foram testados contra uma câmera simulada, não contra os
-seus equipamentos. Teste com uma câmera de cada marca antes de liberar.
-
-**Sem o LifeGuard** dá para usar "Ou enviar um arquivo" no cadastro.
+**Nenhum campo é obrigatório.** Ao salvar, se faltar cliente, contrato,
+gravador, nome, canal/ID, IP ou MAC, aparece "Está faltando: … Deseja salvar
+mesmo assim?". Câmera sem nome recebe "CANAL n", "LG id" ou "Sem nome".
+O lote é **tudo ou nada**: se um canal já estiver documentado, nada é gravado
+e a mensagem diz qual câmera da lista é.
 
 ---
 
-## 8. Rotas da API (referência)
+## 8. Fotos — exportar e importar
+
+O sistema **não captura imagem nenhuma** e não fala com câmeras nem com o
+LifeGuard. As fotos são geradas fora (pelo seu script Python ou pelo
+"Exportar frame" do LifeGuard Console) e importadas na documentação.
+
+**Exportar**
+- **Lista de câmeras (CSV)** — botão "Exportar lista (CSV)" na Documentação
+  (respeita os filtros de tipo e cidade). Separado por `;`, abre direto no
+  Excel. Tem `id`, gravador, canal, ID LifeGuard, cliente, contrato, IP do
+  PPPoE, portas, se já tem foto e a coluna **`arquivo_sugerido`** — o nome
+  que o arquivo da foto deve ter para entrar sozinho na importação.
+  **Sem senhas.**
+- **Foto de uma câmera** — "Exportar foto" na ficha.
+
+**Importar**
+- **Uma câmera** — "Importar foto" na ficha (ou no cadastro).
+- **Em lote** — botão "Importar fotos", dois jeitos de nomear os arquivos:
+  - **Por gravador:** escolha o NVR e selecione os arquivos `CANAL 01.jpg`,
+    `CANAL 02.jpg`… (é o formato do .zip do "Exportar frame" do Console —
+    extraia o .zip antes). Também aceita `CH1.jpg`, `CAM01.jpg` ou só `01.jpg`.
+  - **Por id:** `<id-da-câmera>.jpg` (coluna `arquivo_sugerido` do CSV) ou
+    `LG11157.jpg` para câmeras LifeGuard.
+
+  A tela mostra, antes de enviar, qual arquivo vai para qual câmera e quais
+  não foram reconhecidos. Por padrão **não substitui** foto que já existe —
+  marque "Substituir fotos que já existem" se quiser. As imagens são reduzidas
+  para 1280 px no navegador antes de subir. Cada lote fica no `audit_log`
+  (`ft_foto_lote`), com quem importou e quais arquivos.
+
+---
+
+## 9. Rotas da API (referência)
 
 | Método | Rota | Permissão |
 |---|---|---|
 | GET | `/ferramentas/me` | logado |
-| GET | `/ferramentas/resumo`, `/cidades`, `/cameras`, `/cameras/{id}`, `/cameras/{id}/foto`, `/gravadores`, `/gravadores/{id}` | doc.ver |
-| POST/PATCH | `/ferramentas/cameras`, `/cameras/{id}`; POST `/cameras/{id}/foto` | doc.editar |
+| GET | `/ferramentas/resumo`, `/cidades`, `/clientes?q=`, `/cameras`, `/cameras/{id}`, `/cameras/{id}/foto`, `/cameras-exportar`, `/gravadores`, `/gravadores/{id}` | doc.ver |
+| POST/PATCH | `/ferramentas/cameras`, `/cameras/lote`, `/cameras/{id}`; POST `/cameras/{id}/foto`, `/fotos/mapear`, `/fotos/lote` | doc.editar |
 | POST/PATCH | `/ferramentas/gravadores`; POST/DELETE `/credenciais`; POST `/credenciais/{id}/revelar` (auditado) | doc.senhas |
 | DELETE | `/ferramentas/cameras/{id}` | doc.excluir |
 | GET/POST | `/ferramentas/permissoes` | ft.admin |

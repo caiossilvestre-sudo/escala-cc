@@ -6,6 +6,7 @@ import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto } from "./util";
 import CameraFicha from "./CameraFicha";
 import CameraForm from "./CameraForm";
 import Permissoes from "./Permissoes";
+import ImportarFotos from "./ImportarFotos";
 import "./ferramentas.css";
 
 const TIPOS = [["", "Todas"], ["nvr_life", "NVR Life"], ["nvr_cliente", "NVR externo"], ["lifeguard", "LifeGuard"]];
@@ -25,7 +26,8 @@ function Stat({ valor, label, cor }) {
 export default function Documentacao({ acesso }) {
   const { toast, showToast } = useToast();
   const { confirm, confirmState, resolveConfirm } = useConfirm();
-  const [modo, setModo] = useState({ tela: "lista" }); // lista | nova | editar | permissoes
+  const [modo, setModo] = useState({ tela: "lista" }); // lista | nova | editar | permissoes | importar
+  const [exportando, setExportando] = useState(false);
   const [filtros, setFiltros] = useState({ q: "", tipo: "", status: "", cidade: "", sem_foto: false });
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
@@ -68,20 +70,50 @@ export default function Documentacao({ acesso }) {
   };
 
   if (modo.tela === "nova" || modo.tela === "editar") {
-    return (<><CameraForm cameraId={modo.id} onVoltar={voltarDoForm} showToast={showToast} /><Toast toast={toast} /></>);
+    return (<><CameraForm cameraId={modo.id} onVoltar={voltarDoForm} showToast={showToast} confirm={confirm} /><Toast toast={toast} /><ConfirmModal state={confirmState} onResolve={resolveConfirm} /></>);
   }
   if (modo.tela === "permissoes") {
     return (<><Permissoes onVoltar={() => setModo({ tela: "lista" })} showToast={showToast} /><Toast toast={toast} /></>);
   }
+  if (modo.tela === "importar") {
+    return (<><ImportarFotos onVoltar={() => voltarDoForm(null)} showToast={showToast} /><Toast toast={toast} /></>);
+  }
+
+  // CSV com os filtros atuais de tipo/cidade (sem senhas) — base para o script externo
+  const exportarCsv = async () => {
+    setExportando(true);
+    try {
+      const p = new URLSearchParams();
+      if (filtros.tipo) p.set("tipo", filtros.tipo);
+      if (filtros.cidade) p.set("cidade", filtros.cidade);
+      const linhas = await api.get(`/ferramentas/cameras-exportar?${p}`);
+      if (!linhas.length) { showToast("Nada para exportar com esses filtros."); return; }
+      const cols = Object.keys(linhas[0]);
+      const cel = (v) => {
+        const s = v === null || v === undefined ? "" : String(v);
+        return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = "﻿" + [cols.join(";"), ...linhas.map((l) => cols.map((c) => cel(l[c])).join(";"))].join("\r\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cameras_documentacao_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      showToast(`${linhas.length} câmeras exportadas.`);
+    } catch (e) { showToast(e.message); } finally { setExportando(false); }
+  };
 
   return (
     <>
       <TopBar
         title="LifeGuard · Documentação"
-        subtitle="Câmeras de NVR Life, NVR externo e LifeGuard, com a foto registrada no cadastro"
+        subtitle="Câmeras de NVR Life, NVR externo e LifeGuard, com a foto de documentação"
         right={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {acesso.tem("ft.admin") && <button className="btn btn-ghost" onClick={() => setModo({ tela: "permissoes" })}>Permissões</button>}
+            <button className="btn btn-ghost" disabled={exportando} onClick={exportarCsv}>{exportando ? "Exportando…" : "Exportar lista (CSV)"}</button>
+            {acesso.tem("doc.editar") && <button className="btn btn-ghost" onClick={() => setModo({ tela: "importar" })}>Importar fotos</button>}
             {acesso.tem("doc.editar") && <button className="btn btn-primary" onClick={() => setModo({ tela: "nova" })}>+ Nova câmera</button>}
           </div>
         }

@@ -11,8 +11,11 @@ S = lambda n=200: Field(default=None, max_length=n)  # noqa: E731
 
 
 class CameraIn(BaseModel):
-    tipo: Tipo
-    nome: str = Field(min_length=1, max_length=200)
+    """Nenhum dado é obrigatório além do tipo: a tela avisa o que está faltando
+    e a pessoa decide salvar mesmo assim. Sem nome, o sistema usa
+    "CANAL n" / "LG id" / "Sem nome"."""
+    tipo: Tipo = "nvr"
+    nome: str | None = S(200)
     descricao_local: str | None = S(300)
     gravador_id: str | None = S(60)
     canal: int | None = Field(default=None, ge=1, le=512)
@@ -42,7 +45,7 @@ class CameraIn(BaseModel):
 class CameraPatch(BaseModel):
     """Mesmos campos de CameraIn, todos opcionais (só o que vier é alterado)."""
     tipo: Tipo | None = None
-    nome: str | None = Field(default=None, min_length=1, max_length=200)
+    nome: str | None = S(200)
     descricao_local: str | None = S(300)
     gravador_id: str | None = S(60)
     canal: int | None = Field(default=None, ge=1, le=512)
@@ -69,10 +72,34 @@ class CameraPatch(BaseModel):
     observacoes: str | None = S(2000)
 
 
+class CameraLoteIn(BaseModel):
+    """Várias câmeras do mesmo cliente num cadastro só (tudo ou nada)."""
+    cameras: list[CameraIn] = Field(min_length=1, max_length=64)
+
+
 class FotoIn(BaseModel):
     # JPEG/PNG em base64 (aceita também "data:image/jpeg;base64,...").
     # ~11 MB de texto = 8 MB de imagem; o servidor reduz para 1280 px.
     imagem_base64: str = Field(min_length=100, max_length=11_500_000)
+
+
+class MapearFotosIn(BaseModel):
+    """Nomes dos arquivos escolhidos na importação em lote.
+    Com gravador_id: "CANAL 01.jpg", "CH1.jpg"… viram o canal daquele gravador.
+    Sem gravador_id: "<id-da-camera>.jpg" (do CSV exportado) ou "LG11157.jpg"."""
+    gravador_id: str | None = S(60)
+    nomes: list[str] = Field(min_length=1, max_length=600)
+
+
+class FotoLoteItem(BaseModel):
+    camera_id: str = Field(min_length=1, max_length=60)
+    imagem_base64: str = Field(min_length=100, max_length=3_000_000)  # já reduzida no navegador
+    arquivo: str | None = S(200)
+
+
+class FotoLoteIn(BaseModel):
+    itens: list[FotoLoteItem] = Field(min_length=1, max_length=10)
+    substituir: bool = False  # False: câmera que já tem foto fica como está
 
 
 class GravadorIn(BaseModel):

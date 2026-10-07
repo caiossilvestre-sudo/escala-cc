@@ -3,6 +3,7 @@
 Lembrete de deploy: o prefixo /ferramentas precisa estar liberado no
 Nginx (/etc/nginx/sites-available/escala.conf), igual aos outros prefixos.
 """
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -17,7 +18,8 @@ from app.db.session import get_db
 from app.ferramentas import fotos, normalizar as nz
 from app.ferramentas.models import FtAcesso, FtCamera, FtCredencial, FtGravador
 from app.ferramentas.schemas import (
-    CameraIn, CameraPatch, CameraResumo, CredencialIn, FotoIn, GravadorIn, GravadorPatch, PermissaoIn,
+    CameraIn, CameraLoteIn, CameraPatch, CameraResumo, CredencialIn, FotoIn, FotoLoteIn, GravadorIn, GravadorPatch,
+    MapearFotosIn, PermissaoIn,
 )
 from app.ferramentas.seguranca import (
     PERMISSOES, PRESETS, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
@@ -55,17 +57,25 @@ def _limpar_camera(dados: dict) -> dict:
 
 
 def _validar_vinculo(db: Session, cam: FtCamera):
+    """Nada aqui é obrigatório (a tela avisa o que falta). Só garante que um
+    gravador informado existe e limpa os campos do outro tipo."""
     if cam.tipo == "nvr":
-        if not cam.gravador_id or not cam.canal:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Câmera de NVR precisa de gravador e canal.")
-        if db.get(FtGravador, cam.gravador_id) is None:
+        if cam.gravador_id and db.get(FtGravador, cam.gravador_id) is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Gravador não encontrado.")
         cam.lg_id = None
     else:
-        if not cam.lg_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Câmera LifeGuard precisa do ID da câmera.")
         cam.gravador_id = None
         cam.canal = None
+    if not cam.nome:
+        cam.nome = _nome_padrao(cam)
+
+
+def _nome_padrao(cam: FtCamera) -> str:
+    if cam.tipo == "nvr" and cam.canal:
+        return f"CANAL {cam.canal}"
+    if cam.tipo == "lifeguard" and cam.lg_id:
+        return f"LG {cam.lg_id}"
+    return "Sem nome"
 
 
 def _commit_ou_conflito(db: Session):
@@ -287,14 +297,75 @@ def criar_camera(body: CameraIn, request: Request, db: Session = Depends(get_db)
     return {"id": cam.id}
 
 
+@router.post("/cameras/lote", status_code=201)
+def criar_cameras_lote(body: CameraLoteIn, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
+    """Várias câmeras (normalmente do mesmo cliente) de uma vez. Tudo ou nada:
+    se uma linha tiver problema, nenhuma é gravada e a resposta diz qual."""
+    novas, vistos_canal, vistos_lg = [], set(), set()
+    for i, item in enumerate(body.cameras, start=1):
+        try:
+            dados = _limpar_camera(item.model_dump())
+        except HTTPException as e:
+            raise HTTPException(e.status_code, f"Câmera {i}: {e.detail}")
+        cam = FtCamera(**dados, atualizado_por_id=user.id)
+        try:
+            _validar_vinculo(db, cam)
+        except HTTPException as e:
+            raise HTTPException(e.status_code, f"Câmera {i}: {e.detail}")
+        if cam.tipo == "nvr" and cam.gravador_id and cam.canal:
+            chave = (cam.gravador_id, cam.canal)
+            if chave in vistos_canal or db.query(FtCamera).filter(FtCamera.gravador_id == cam.gravador_id, FtCamera.canal == cam.canal).first():
+                raise HTTPException(status.HTTP_409_CONFLICT, f"Câmera {i}: o canal {cam.canal} já está documentado neste gravador.")
+            vistos_canal.add(chave)
+        if cam.tipo == "lifeguard" and cam.lg_id:
+            if cam.lg_id in vistos_lg or db.query(FtCamera).filter(FtCamera.lg_id == cam.lg_id).first():
+                raise HTTPException(status.HTTP_409_CONFLICT, f"Câmera {i}: o ID LifeGuard {cam.lg_id} já está documentado.")
+            vistos_lg.add(cam.lg_id)
+        novas.append(cam)
+    db.add_all(novas)
+    _commit_ou_conflito(db)
+    log_action(db, request, user, "ft_criar_cameras_lote", "ft_camera", None,
+               {"qtd": len(novas), "cameras": [{"id": c.id, "nome": c.nome} for c in novas]})
+    return {"ids": [c.id for c in novas]}
+
+
+@router.get("/clientes")
+def buscar_clientes(q: str = Query(min_length=2, max_length=80), db: Session = Depends(get_db), user=Depends(VER)):
+    """Clientes que já existem na documentação (tirados das câmeras), para
+    reaproveitar os dados quando o mesmo cliente contrata mais câmeras."""
+    padrao = f"%{q.strip()}%"
+    linhas = (db.query(FtCamera.nome_cliente, FtCamera.contrato_ixc, FtCamera.id_cliente_ixc,
+                       FtCamera.cidade, FtCamera.pppoe, FtCamera.ip_pppoe, FtCamera.gravador_id)
+              .filter(or_(FtCamera.nome_cliente.ilike(padrao), FtCamera.contrato_ixc.ilike(padrao),
+                          FtCamera.id_cliente_ixc.ilike(padrao), FtCamera.pppoe.ilike(padrao)))
+              .limit(3000).all())
+    grupos = {}
+    for nome, contrato, id_cli, cidade, pppoe, ip_pppoe, grav_id in linhas:
+        if not nome and not contrato:
+            continue
+        chave = ((nome or "").strip().lower(), contrato or "")
+        g = grupos.setdefault(chave, {"nome_cliente": nome, "contrato_ixc": contrato, "id_cliente_ixc": None,
+                                      "cidade": None, "pppoe": None, "ip_pppoe": None, "qtd_cameras": 0, "gravadores": set()})
+        g["qtd_cameras"] += 1
+        for campo, valor in (("id_cliente_ixc", id_cli), ("cidade", cidade), ("pppoe", pppoe), ("ip_pppoe", ip_pppoe)):
+            if valor and not g[campo]:
+                g[campo] = valor
+        if grav_id:
+            g["gravadores"].add(grav_id)
+    saida = sorted(grupos.values(), key=lambda g: -g["qtd_cameras"])[:15]
+    nomes_grav = {g.id: g.nome for g in db.query(FtGravador).filter(
+        FtGravador.id.in_({gid for c in saida for gid in c["gravadores"]})).all()} if saida else {}
+    for c in saida:
+        c["gravadores"] = sorted(nomes_grav.get(gid, "") for gid in c["gravadores"])
+    return saida
+
+
 @router.patch("/cameras/{camera_id}")
 def editar_camera(camera_id: str, body: CameraPatch, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
     dados = _limpar_camera(body.model_dump(exclude_unset=True))
-    if "nome" in dados and not dados["nome"]:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nome da câmera é obrigatório.")
     for k, v in dados.items():
         setattr(cam, k, v)
     cam.atualizado_por_id = user.id
@@ -335,21 +406,128 @@ def ver_foto(camera_id: str, db: Session = Depends(get_db), user=Depends(VER)):
 @router.post("/cameras/{camera_id}/foto")
 @limiter.limit("30/minute")
 def salvar_foto(camera_id: str, body: FotoIn, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
-    """Grava/substitui a foto da documentação. Só existe UMA por câmera.
-    Capturas só para exportar não passam por aqui — ficam no navegador/LifeGuard."""
+    """Importa (grava/substitui) a foto da documentação de uma câmera.
+    Só existe UMA por câmera. O sistema não captura nada — a imagem vem de
+    um arquivo escolhido pela pessoa."""
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
     jpeg, largura, altura = fotos.normalizar_imagem(fotos.decodificar_base64(body.imagem_base64))
+    substituiu = _gravar_foto(cam, jpeg, user)
+    db.commit()
+    log_action(db, request, user, "ft_foto_camera", "ft_camera", cam.id,
+               {"substituiu": substituiu, "largura": largura, "altura": altura, "bytes": len(jpeg)})
+    return {"ok": True, "foto_em": cam.foto_em, "bytes": len(jpeg), "largura": largura, "altura": altura}
+
+
+def _gravar_foto(cam: FtCamera, jpeg: bytes, user) -> bool:
     substituiu = bool(cam.foto_arquivo)
     cam.foto_arquivo = fotos.salvar(cam.id, jpeg)
     cam.foto_em = datetime.utcnow()
     cam.foto_por_id = user.id
     cam.foto_bytes = len(jpeg)
+    return substituiu
+
+
+# ------------------------------------------------- exportar / importar em lote
+
+_RE_CANAL = re.compile(r"(?:canal|ch|cam|channel)[\s_-]*0*(\d{1,3})\b", re.IGNORECASE)
+_RE_SO_NUMERO = re.compile(r"^0*(\d{1,3})$")
+_RE_LG = re.compile(r"^lg[\s_-]*(\d+)$", re.IGNORECASE)
+_RE_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
+
+@router.get("/cameras-exportar")
+def exportar_cameras(
+    tipo: str | None = None, cidade: str | None = None, gravador_id: str | None = None,
+    db: Session = Depends(get_db), user=Depends(VER),
+):
+    """Lista completa (sem senhas) para virar CSV no navegador — base para o
+    script externo de captura saber quais câmeras existem e como nomear os arquivos."""
+    q = db.query(FtCamera, FtGravador).outerjoin(FtGravador, FtCamera.gravador_id == FtGravador.id)
+    if tipo == "lifeguard":
+        q = q.filter(FtCamera.tipo == "lifeguard")
+    elif tipo in ("nvr_life", "nvr_cliente"):
+        q = q.filter(FtCamera.tipo == "nvr", FtGravador.origem == tipo.split("_")[1])
+    if cidade:
+        q = q.filter(FtCamera.cidade == cidade)
+    if gravador_id:
+        q = q.filter(FtCamera.gravador_id == gravador_id)
+    linhas = q.order_by(FtGravador.nome.is_(None), FtGravador.nome, FtCamera.canal, FtCamera.nome).all()
+    return [{
+        "id": c.id, "tipo": "lifeguard" if c.tipo == "lifeguard" else f"nvr_{g.origem}" if g else "nvr",
+        "gravador": g.nome if g else None, "gravador_url": g.url_acesso if g else None, "canal": c.canal,
+        "lg_id": c.lg_id, "nome": c.nome, "descricao_local": c.descricao_local,
+        "cliente": c.nome_cliente, "contrato_ixc": c.contrato_ixc, "cidade": c.cidade,
+        "ip_pppoe": c.ip_pppoe, "porta_publica": c.porta_publica, "porta_lifeguard": c.porta_lifeguard,
+        "ip": c.ip, "porta": c.porta, "mac": c.mac, "modelo": c.modelo,
+        "tem_foto": bool(c.foto_arquivo),
+        "arquivo_sugerido": (f"LG{c.lg_id}.jpg" if c.tipo == "lifeguard" and c.lg_id else f"{c.id}.jpg"),
+    } for c, g in linhas]
+
+
+@router.post("/fotos/mapear")
+def mapear_fotos(body: MapearFotosIn, db: Session = Depends(get_db), user=Depends(EDITAR)):
+    """Descobre a câmera de cada arquivo pelo nome, antes de enviar as imagens."""
+    por_canal = {}
+    if body.gravador_id:
+        if not db.get(FtGravador, body.gravador_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Gravador não encontrado.")
+        por_canal = {c.canal: c for c in db.query(FtCamera).filter(FtCamera.gravador_id == body.gravador_id)}
+    saida = []
+    for nome in body.nomes:
+        base = nome.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        radical = base.rsplit(".", 1)[0].strip()
+        cam, motivo = None, None
+        if body.gravador_id:
+            m = _RE_CANAL.search(radical) or _RE_SO_NUMERO.match(radical)
+            if not m:
+                motivo = "Nome sem número de canal (use CANAL 01.jpg)"
+            else:
+                cam = por_canal.get(int(m.group(1)))
+                motivo = None if cam else f"Canal {int(m.group(1))} não documentado neste gravador"
+        elif _RE_UUID.match(radical):
+            cam = db.get(FtCamera, radical.lower())
+            motivo = None if cam else "Id não encontrado"
+        elif _RE_LG.match(radical):
+            lg = _RE_LG.match(radical).group(1)
+            cam = db.query(FtCamera).filter(FtCamera.lg_id == lg).first()
+            motivo = None if cam else f"ID LifeGuard {lg} não documentado"
+        else:
+            motivo = "Nome não reconhecido (use o id do CSV ou LG<ID>.jpg)"
+        saida.append({
+            "nome": base, "camera_id": cam.id if cam else None, "camera_nome": cam.nome if cam else None,
+            "canal": cam.canal if cam else None, "tem_foto": bool(cam.foto_arquivo) if cam else False, "motivo": motivo,
+        })
+    return saida
+
+
+@router.post("/fotos/lote")
+@limiter.limit("120/minute")
+def importar_fotos_lote(body: FotoLoteIn, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
+    """Recebe até 10 imagens por chamada (o navegador manda em sequência)."""
+    resultado = []
+    gravadas = []
+    for item in body.itens:
+        cam = db.get(FtCamera, item.camera_id)
+        if not cam:
+            resultado.append({"camera_id": item.camera_id, "status": "erro", "motivo": "Câmera não encontrada"})
+            continue
+        if cam.foto_arquivo and not body.substituir:
+            resultado.append({"camera_id": cam.id, "status": "mantida", "motivo": "Já tinha foto"})
+            continue
+        try:
+            jpeg, _, _ = fotos.normalizar_imagem(fotos.decodificar_base64(item.imagem_base64))
+        except HTTPException as e:
+            resultado.append({"camera_id": cam.id, "status": "erro", "motivo": e.detail})
+            continue
+        substituiu = _gravar_foto(cam, jpeg, user)
+        gravadas.append({"camera_id": cam.id, "arquivo": item.arquivo, "substituiu": substituiu})
+        resultado.append({"camera_id": cam.id, "status": "substituida" if substituiu else "importada"})
     db.commit()
-    log_action(db, request, user, "ft_foto_camera", "ft_camera", cam.id,
-               {"substituiu": substituiu, "largura": largura, "altura": altura, "bytes": len(jpeg)})
-    return {"ok": True, "foto_em": cam.foto_em, "bytes": len(jpeg), "largura": largura, "altura": altura}
+    if gravadas:
+        log_action(db, request, user, "ft_foto_lote", "ft_camera", None, {"fotos": gravadas})
+    return resultado
 
 
 # -------------------------------------------------------------- credenciais

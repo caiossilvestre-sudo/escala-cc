@@ -4,8 +4,8 @@ import { TopBar, Spinner, ErrorBox } from "../components/UI";
 
 // Cabeçalho curto de cada coluna (o texto completo vem do backend, no title)
 const CURTO = {
-  "doc.ver": "Consultar", "doc.editar": "Cadastrar / foto", "doc.senhas": "Senhas", "doc.excluir": "Excluir",
-  referencia: "Referência", provisionamento: "Provisionamento", diagnostico: "Diagnosticar", aovivo: "Ao vivo", "ft.admin": "Permissões",
+  "doc.ver": "Consultar / exportar", "doc.editar": "Cadastrar / importar foto", "doc.senhas": "Senhas", "doc.excluir": "Excluir",
+  "ft.admin": "Permissões",
 };
 const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver" };
 
@@ -71,7 +71,7 @@ export default function Permissoes({ onVoltar, showToast }) {
             <input type="search" placeholder="Filtrar por nome ou setor" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
           </div>
           <div className="ft-tabela-wrap">
-            <table className="tbl" style={{ minWidth: 980 }}>
+            <table className="tbl" style={{ minWidth: 720 }}>
               <thead>
                 <tr>
                   <th rowSpan={2}>Colaborador</th>

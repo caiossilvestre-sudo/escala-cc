@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Pill } from "../components/UI";
-import { TIPO_INFO, STATUS_INFO, tipoDe, dataHora, kb, baixarImagem } from "./util";
-import { capturarPeloLifeGuard } from "./lifeguardLocal";
+import { TIPO_INFO, STATUS_INFO, tipoDe, dataHora, kb, baixarImagem, lerArquivo, reduzirImagem } from "./util";
 
 function Campos({ itens }) {
   const visiveis = itens.filter(([, v]) => v !== null && v !== undefined && v !== "");
@@ -22,7 +21,7 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
   const [erro, setErro] = useState("");
   const [foto, setFoto] = useState(null);
   const [carregandoFoto, setCarregandoFoto] = useState(false);
-  const [capturando, setCapturando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const [senhas, setSenhas] = useState({});
   const timers = useRef({});
 
@@ -53,27 +52,23 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
 
   const tipo = TIPO_INFO[tipoDe(cam)];
   const st = STATUS_INFO[cam.status] || STATUS_INFO.desconhecido;
-  const alvo = { tipo: cam.tipo, ip: cam.ip, porta: cam.porta, canal: cam.canal, gravador_url: cam.gravador?.url_acesso, lg_id: cam.lg_id };
-
-  const capturar = async (paraDocumentacao) => {
-    setCapturando(true);
+  // Importa a foto de um arquivo escolhido (o sistema não captura nada sozinho)
+  const importarFoto = async (e) => {
+    const arq = e.target.files?.[0];
+    e.target.value = "";
+    if (!arq) return;
+    if (cam.tem_foto && !(await confirm("A foto atual da documentação será substituída pela imagem escolhida.", { title: "Substituir a foto?", confirmLabel: "Substituir", danger: false }))) return;
+    setEnviando(true);
     try {
-      const r = await capturarPeloLifeGuard(alvo);
-      const dataUrl = `data:image/jpeg;base64,${r.imagem_base64}`;
-      if (paraDocumentacao) {
-        if (cam.tem_foto && !(await confirm("A foto atual da documentação será trocada pela nova captura.", { title: "Substituir a foto?", confirmLabel: "Substituir", danger: false }))) return;
-        await api.post(`/ferramentas/cameras/${cam.id}/foto`, { imagem_base64: dataUrl });
-        showToast("Foto da documentação atualizada.");
-        carregar();
-        onMudou?.();
-      } else {
-        baixarImagem(dataUrl, cam.nome);
-        showToast("Imagem exportada — não foi salva no servidor.");
-      }
-    } catch (e) {
-      showToast(e.message);
+      const dataUrl = await reduzirImagem(await lerArquivo(arq));
+      await api.post(`/ferramentas/cameras/${cam.id}/foto`, { imagem_base64: dataUrl });
+      showToast("Foto da documentação importada.");
+      carregar();
+      onMudou?.();
+    } catch (err) {
+      showToast(err.message);
     } finally {
-      setCapturando(false);
+      setEnviando(false);
     }
   };
 
@@ -105,7 +100,7 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
       <div className="ft-sec">
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <Pill status={tipo.pill} title={tipo.dica}>{tipo.label}</Pill>
-          <Pill status={st.pill}>{st.label}</Pill>
+          {cam.status !== "desconhecido" && <Pill status={st.pill}>{st.label}</Pill>}
         </div>
         <div className="display" style={{ fontSize: 18, fontWeight: 600, marginTop: 8 }}>{cam.nome}</div>
         <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>
@@ -133,15 +128,15 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
           {cam.pode_editar && (
-            <button className="btn btn-primary btn-sm" disabled={capturando} onClick={() => capturar(true)}>
-              {capturando ? "Capturando…" : cam.tem_foto ? "Atualizar foto da documentação" : "Capturar foto pelo LifeGuard"}
-            </button>
+            <label className={`btn btn-primary btn-sm ${enviando ? "disabled" : ""}`} style={{ cursor: enviando ? "wait" : "pointer" }}>
+              {enviando ? "Importando…" : cam.tem_foto ? "Substituir foto (importar arquivo)" : "Importar foto"}
+              <input type="file" accept="image/*" onChange={importarFoto} disabled={enviando} style={{ display: "none" }} />
+            </label>
           )}
-          <button className="btn btn-ghost btn-sm" disabled={capturando} onClick={() => capturar(false)}>Exportar imagem ao vivo</button>
-          {foto && <button className="btn btn-ghost btn-sm" onClick={() => baixarImagem(foto, `${cam.nome}_documentacao`)}>Baixar foto salva</button>}
+          {foto && <button className="btn btn-ghost btn-sm" onClick={() => baixarImagem(foto, `${cam.nome}_documentacao`)}>Exportar foto</button>}
         </div>
         <div className="info-box" style={{ marginTop: 10, marginBottom: 0 }}>
-          Só a foto da documentação fica salva, uma por câmera. "Atualizar" substitui a anterior; exportar só baixa a imagem neste computador.
+          Uma foto por câmera. Importar uma nova substitui a anterior.
         </div>
       </div>
 

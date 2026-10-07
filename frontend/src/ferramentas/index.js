@@ -8,16 +8,10 @@
 import { createElement, useEffect, useState } from "react";
 import { api } from "../api/client";
 import Documentacao from "./Documentacao";
-import Referencia from "./Referencia";
-import EmConstrucao from "./EmConstrucao";
 
 // id da aba no menu -> permissão necessária + página
 export const PAGINAS_LIFEGUARD = [
   { id: "lg-documentacao", label: "Documentação", permissao: "doc.ver", render: (acesso) => createElement(Documentacao, { acesso }) },
-  { id: "lg-referencia", label: "Referência", permissao: "referencia", render: () => createElement(Referencia) },
-  { id: "lg-provisionamento", label: "Auxílio p/ provisionamento", permissao: "provisionamento", render: () => createElement(EmConstrucao, { titulo: "Auxílio para provisionamento", sub: "Checklist, portas, links de teste e ONVIF" }) },
-  { id: "lg-diagnostico", label: "Diagnosticar", permissao: "diagnostico", render: () => createElement(EmConstrucao, { titulo: "Diagnosticar", sub: "Teste de porta e frame ao vivo, com comprovante em PDF" }) },
-  { id: "lg-aovivo", label: "Ao vivo", permissao: "aovivo", render: () => createElement(EmConstrucao, { titulo: "Ao vivo", sub: "Mosaico de canais do NVR, sem gravação" }) },
 ];
 
 /** Permissões da pessoa logada em Ferramentas + o grupo do menu já montado. */
