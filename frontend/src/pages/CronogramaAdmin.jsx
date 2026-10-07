@@ -45,7 +45,7 @@ function NovaAusenciaForm({ colaboradores, onSubmit, onCancel }) {
         )}
       </div>
       {form.tipo === "folga_plantao" && (
-        <div className="info-box">Isso liga a folga ao plantão daquele dia — se não achar um plantão dessa pessoa nessa data, vai dar erro. Prazo e dia útil (sem domingo/feriado) são conferidos automaticamente.</div>
+        <div className="info-box">Isso liga a folga ao plantão daquele dia — se não achar um plantão dessa pessoa nessa data, vai dar erro. Como admin/supervisor, você pode registrar em qualquer data: prazo de 8 dias úteis, domingo/feriado e janela/cota do sindicato não bloqueiam.</div>
       )}
       <div style={{ display: "flex", gap: 8 }}>
         <button className="btn btn-primary" onClick={() => onSubmit(form)}>Registrar</button>

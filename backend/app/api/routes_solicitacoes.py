@@ -61,6 +61,8 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
     else:
         alvo = user
 
+    privilegiado = user.role in ("admin", "supervisor")
+
     plantao_id_final = body.plantao_id
     if body.tipo == "folga_plantao":
         if not plantao_id_final and body.data_plantao:
@@ -78,14 +80,17 @@ def solicitar(body: SolicitacaoIn, request: Request, db: Session = Depends(get_d
         if ja_tem:
             raise HTTPException(status.HTTP_409_CONFLICT, "Esse plantão já tem uma folga solicitada.")
 
-        prazo = prazo_folga_plantao(db, plantao.data)
-        if body.data_solicitada > prazo or body.data_solicitada <= plantao.data:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"A data da folga deve estar entre o dia seguinte ao plantão e {prazo.strftime('%d/%m/%Y')} (prazo estendido até o domingo da semana seguinte quando o plantão foi num feriado).")
-        ok, motivo = dia_util_para_folga(db, body.data_solicitada)
-        if not ok:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, motivo)
+        # Admin/supervisor têm autonomia: prazo de 8 dias úteis e restrição de
+        # domingo/feriado só valem pro colaborador pedindo pra si mesmo.
+        if not privilegiado:
+            prazo = prazo_folga_plantao(db, plantao.data)
+            if body.data_solicitada > prazo or body.data_solicitada <= plantao.data:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"A data da folga deve estar entre o dia seguinte ao plantão e {prazo.strftime('%d/%m/%Y')} (prazo estendido até o domingo da semana seguinte quando o plantão foi num feriado).")
+            ok, motivo = dia_util_para_folga(db, body.data_solicitada)
+            if not ok:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, motivo)
 
-    if body.tipo == "folga_sindicato":
+    if body.tipo == "folga_sindicato" and not privilegiado:
         _, erro_tipo, erro_msg = cota_disponivel_para_data(db, alvo.id, body.data_solicitada)
         if erro_tipo == "fora_janela":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, erro_msg)
