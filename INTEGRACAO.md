@@ -4,20 +4,20 @@ Este pacote tem **só arquivos novos e 3 arquivos completos já alterados**, nos
 mesmos caminhos do repositório `escala-cc`. Copie por cima no seu diretório
 local, faça commit + push pelo GitHub Desktop e depois `git pull` no servidor.
 
-## O que vem no pacote
+## O que fica no repositório
 
 | Caminho | O que é |
 |---|---|
-| `backend/app/ferramentas/` | **Pasta nova.** Tabelas (`ft_*`), rotas (`/ferramentas`), permissões, criptografia das senhas, fotos e o script de importação |
-| `backend/app/main.py` | Arquivo completo — só **2 linhas novas** (import e `include_router`) |
-| `backend/requirements.txt` | Arquivo completo — 3 dependências novas no final |
-| `backend/.env.example` | Arquivo completo — 2 variáveis novas no final |
-| `frontend/src/ferramentas/` | **Pasta nova.** Telas React (lista, ficha, cadastro, permissões, diagnóstico) |
-| `para_o_lifeguard/escala_bridge.py` | **Não vai no Escala.** Vai no projeto do LifeGuard (ver seção LifeGuard) |
-| `relatorio_importacao_simulacao.xlsx` | Resultado da simulação com a sua planilha (sem senhas) |
+| `backend/app/ferramentas/` | Tabelas (`ft_*`), rotas (`/ferramentas`), permissões por página, criptografia das senhas, fotos e o script de importação |
+| `backend/app/main.py` | 2 linhas: import e `include_router` |
+| `backend/requirements.txt` | `cryptography`, `Pillow`, `openpyxl` (e `psycopg2-binary>=2.9.10`) |
+| `backend/.env.example` | 2 variáveis novas no final |
+| `frontend/src/ferramentas/` | Telas React (Documentação, Referência, Permissões e as páginas em construção) |
+| `frontend/src/App.jsx` | 4 linhas para o grupo Ferramentas · LifeGuard |
 
-`frontend/src/App.jsx` **não vem no pacote** — você vai ajustar na conversa do
-Escala. Os trechos estão na seção 3.
+**Nunca no repositório (ele é público):** a planilha, o relatório de
+importação e a ponte do LifeGuard (`escala_bridge.py`, que vai no projeto do
+LifeGuard).
 
 ---
 
@@ -79,33 +79,34 @@ Sem isso a tela abre, mas tudo dá "Erro na requisição".
 
 ---
 
-## 3. Frontend — o que levar para a conversa do Escala
+## 3. Frontend — `App.jsx`
 
-A pasta `frontend/src/ferramentas/` já está pronta. No `App.jsx` são 4 ajustes:
+A pasta `frontend/src/ferramentas/` já está pronta. No `App.jsx` são 3 ajustes
+(o arquivo completo também vai no pacote):
 
 ```jsx
 // (1) junto dos outros imports
-import { LifeGuardDocumentacao, LifeGuardDiagnostico, NAV_FERRAMENTAS, useFerramentasNivel } from "./ferramentas";
+import { FerramentasPagina, useFerramentasAcesso } from "./ferramentas";
 
 // (2) dentro do Shell(), logo depois do useIdleLogout(...)
-const ftNivel = useFerramentasNivel(user?.colaborador_id);
+const ft = useFerramentasAcesso(user?.colaborador_id);
 
 // (3) trocar a linha do `const nav = ...` por:
 const navBase = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-const nav = ftNivel ? [...navBase, NAV_FERRAMENTAS] : navBase;
+const nav = ft.nav ? [...navBase, ft.nav] : navBase;
 
 // (4) junto dos outros {activeTab === ...}, dentro do <fieldset>
-{activeTab === "lg-documentacao" && ftNivel && <LifeGuardDocumentacao nivel={ftNivel} />}
-{activeTab === "lg-diagnostico" && ftNivel && <LifeGuardDiagnostico />}
+<FerramentasPagina tab={activeTab} acesso={ft} />
 ```
 
-O grupo **Ferramentas** (LifeGuard · Documentação / LifeGuard · Diagnóstico)
-só aparece para quem tem acesso ao módulo. Admin do Escala sempre tem.
+O grupo **Ferramentas · LifeGuard** mostra só as páginas que a pessoa tem
+permissão: Documentação, Referência, Auxílio p/ provisionamento,
+Diagnosticar e Ao vivo. Páginas novas do módulo entram em
+`ferramentas/index.js` — **não precisa mexer de novo no App.jsx**.
 
 Atenção: o `<fieldset disabled={isViewer}>` do App desabilita tudo para o
-perfil visualizador. Se um visualizador da escala receber nível em Ferramentas,
-ele vai conseguir só consultar. Se quiser que ele cadastre câmeras, o módulo
-precisa ficar fora desse fieldset (decisão para a conversa do Escala).
+perfil visualizador — mesmo com permissão em Ferramentas ele só consegue
+consultar.
 
 ---
 
@@ -193,17 +194,27 @@ Resultado da simulação com a sua planilha:
 
 ---
 
-## 6. Permissões
+## 6. Permissões (por página/tópico)
 
-Na tela LifeGuard · Documentação, o admin tem o botão **Permissões**:
+Na Documentação, quem tem "Gerenciar permissões" vê o botão **Permissões**: uma
+linha por colaborador, uma caixinha por permissão, salva na hora (e vai para o
+`audit_log`). Atalhos **N1** / **N2** / **Nenhum** só preenchem as caixinhas.
 
-| Nível | Pode |
+| Permissão | Libera |
 |---|---|
-| **N1** | consultar, cadastrar e editar câmeras, tirar/atualizar a foto |
-| **N2** | + ver senhas dos gravadores (cada visualização vai para o `audit_log`), editar gravadores e credenciais |
-| **Admin** | + excluir e definir permissões. Todo admin do Escala é admin aqui |
+| Documentação · consultar | lista, ficha e foto |
+| Documentação · cadastrar/editar e tirar foto | cadastrar/editar câmera, atualizar a foto |
+| Documentação · ver senhas e editar gravadores | mostrar senhas (auditado), gravadores e credenciais |
+| Documentação · excluir câmeras | excluir |
+| Referência / Auxílio p/ provisionamento / Diagnosticar / Ao vivo | a página correspondente |
+| Gerenciar permissões | a tela de permissões |
 
-Sem nível definido, a pessoa não vê o grupo Ferramentas no menu.
+Admin do Escala tem tudo, sempre. Marcar qualquer permissão de Documentação
+marca "consultar" junto. Sem nenhuma caixinha, a pessoa não vê o grupo no menu.
+
+As permissões ficam na tabela `ft_acessos` (criada sozinha ao reiniciar). A
+tabela antiga `ft_permissoes` (por nível) não é mais usada — pode apagar:
+`DROP TABLE ft_permissoes;` no psql.
 
 ---
 
@@ -251,16 +262,11 @@ seus equipamentos. Teste com uma câmera de cada marca antes de liberar.
 
 ## 8. Rotas da API (referência)
 
-| Método | Rota | Nível |
+| Método | Rota | Permissão |
 |---|---|---|
 | GET | `/ferramentas/me` | logado |
-| GET | `/ferramentas/resumo`, `/ferramentas/cidades` | N1 |
-| GET | `/ferramentas/cameras?q=&tipo=nvr_life\|nvr_cliente\|lifeguard&status=&cidade=&sem_foto=&pagina=` | N1 |
-| GET/POST/PATCH | `/ferramentas/cameras/{id}` | N1 |
-| DELETE | `/ferramentas/cameras/{id}` | Admin |
-| GET/POST | `/ferramentas/cameras/{id}/foto` | N1 |
-| GET | `/ferramentas/gravadores`, `/ferramentas/gravadores/{id}` | N1 |
-| POST/PATCH | `/ferramentas/gravadores` | N2 |
-| POST/DELETE | `/ferramentas/credenciais` | N2 |
-| POST | `/ferramentas/credenciais/{id}/revelar` | N2 (auditado) |
-| GET/POST | `/ferramentas/permissoes` | Admin |
+| GET | `/ferramentas/resumo`, `/cidades`, `/cameras`, `/cameras/{id}`, `/cameras/{id}/foto`, `/gravadores`, `/gravadores/{id}` | doc.ver |
+| POST/PATCH | `/ferramentas/cameras`, `/cameras/{id}`; POST `/cameras/{id}/foto` | doc.editar |
+| POST/PATCH | `/ferramentas/gravadores`; POST/DELETE `/credenciais`; POST `/credenciais/{id}/revelar` (auditado) | doc.senhas |
+| DELETE | `/ferramentas/cameras/{id}` | doc.excluir |
+| GET/POST | `/ferramentas/permissoes` | ft.admin |

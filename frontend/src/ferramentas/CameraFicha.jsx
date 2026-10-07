@@ -112,7 +112,7 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
           {[cam.descricao_local, cam.nome_cliente].filter(Boolean).join(" · ") || "—"}
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => onEditar(cam.id)}>Editar dados</button>
+          {cam.pode_editar && <button className="btn btn-ghost btn-sm" onClick={() => onEditar(cam.id)}>Editar dados</button>}
           {cam.pode_excluir && <button className="btn btn-danger btn-sm" onClick={excluir}>Excluir</button>}
         </div>
       </div>
@@ -132,9 +132,11 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
           </div>
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-          <button className="btn btn-primary btn-sm" disabled={capturando} onClick={() => capturar(true)}>
-            {capturando ? "Capturando…" : cam.tem_foto ? "Atualizar foto da documentação" : "Capturar foto pelo LifeGuard"}
-          </button>
+          {cam.pode_editar && (
+            <button className="btn btn-primary btn-sm" disabled={capturando} onClick={() => capturar(true)}>
+              {capturando ? "Capturando…" : cam.tem_foto ? "Atualizar foto da documentação" : "Capturar foto pelo LifeGuard"}
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" disabled={capturando} onClick={() => capturar(false)}>Exportar imagem ao vivo</button>
           {foto && <button className="btn btn-ghost btn-sm" onClick={() => baixarImagem(foto, `${cam.nome}_documentacao`)}>Baixar foto salva</button>}
         </div>
@@ -166,7 +168,7 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
       <div className="ft-sec">
         <h3>
           Acessos
-          <Pill status="pendente">{cam.pode_ver_senhas ? "Senhas: N2 e Admin" : "Senhas só para N2 e Admin"}</Pill>
+          <Pill status="pendente">{cam.pode_ver_senhas ? "Você pode ver as senhas" : "Senhas: permissão própria"}</Pill>
         </h3>
         {cam.credenciais.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhum usuário cadastrado.</div> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

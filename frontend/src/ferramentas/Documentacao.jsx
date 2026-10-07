@@ -22,7 +22,7 @@ function Stat({ valor, label, cor }) {
 }
 
 /** LifeGuard · Documentação — página principal do módulo Ferramentas. */
-export default function Documentacao({ nivel }) {
+export default function Documentacao({ acesso }) {
   const { toast, showToast } = useToast();
   const { confirm, confirmState, resolveConfirm } = useConfirm();
   const [modo, setModo] = useState({ tela: "lista" }); // lista | nova | editar | permissoes
@@ -81,8 +81,8 @@ export default function Documentacao({ nivel }) {
         subtitle="Câmeras de NVR Life, NVR externo e LifeGuard, com a foto registrada no cadastro"
         right={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {nivel === "admin" && <button className="btn btn-ghost" onClick={() => setModo({ tela: "permissoes" })}>Permissões</button>}
-            <button className="btn btn-primary" onClick={() => setModo({ tela: "nova" })}>+ Nova câmera</button>
+            {acesso.tem("ft.admin") && <button className="btn btn-ghost" onClick={() => setModo({ tela: "permissoes" })}>Permissões</button>}
+            {acesso.tem("doc.editar") && <button className="btn btn-primary" onClick={() => setModo({ tela: "nova" })}>+ Nova câmera</button>}
           </div>
         }
       />

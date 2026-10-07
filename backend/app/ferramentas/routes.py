@@ -15,13 +15,15 @@ from app.core.rate_limit import limiter
 from app.db.models import Colaborador
 from app.db.session import get_db
 from app.ferramentas import fotos, normalizar as nz
-from app.ferramentas.models import FtCamera, FtCredencial, FtGravador, FtPermissao
+from app.ferramentas.models import FtAcesso, FtCamera, FtCredencial, FtGravador
 from app.ferramentas.schemas import (
     CameraIn, CameraPatch, CameraResumo, CredencialIn, FotoIn, GravadorIn, GravadorPatch, PermissaoIn,
 )
 from app.ferramentas.seguranca import (
-    NIVEL_LABEL, cifrar, decifrar, exigir_admin, exigir_n1, exigir_n2, nivel_do,
+    PERMISSOES, PRESETS, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
 )
+
+VER, EDITAR, SENHAS, EXCLUIR, ADMIN = (exigir(p) for p in ("doc.ver", "doc.editar", "doc.senhas", "doc.excluir", "ft.admin"))
 
 router = APIRouter(prefix="/ferramentas", tags=["ferramentas"])
 
@@ -107,13 +109,13 @@ def _gravador_dict(g: FtGravador) -> dict:
 
 @router.get("/me")
 def meu_acesso(user: Colaborador = Depends(get_current_colaborador), db: Session = Depends(get_db)):
-    """Usado pelo menu: diz se a pessoa vê o módulo e com qual nível."""
-    nivel = nivel_do(db, user)
-    return {"nivel": nivel, "nivel_label": NIVEL_LABEL.get(nivel) if nivel else None}
+    """Usado pelo menu: quais páginas/tópicos a pessoa pode ver."""
+    perms = permissoes_do(db, user)
+    return {"permissoes": [p for p in PERMISSOES if p in perms], "admin_escala": user.role == "admin"}
 
 
 @router.get("/resumo")
-def resumo(db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def resumo(db: Session = Depends(get_db), user=Depends(VER)):
     base = db.query(FtCamera)
     nvr = base.filter(FtCamera.tipo == "nvr")
     return {
@@ -127,7 +129,7 @@ def resumo(db: Session = Depends(get_db), user=Depends(exigir_n1)):
 
 
 @router.get("/cidades")
-def cidades(db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def cidades(db: Session = Depends(get_db), user=Depends(VER)):
     linhas = db.query(FtCamera.cidade).filter(FtCamera.cidade.isnot(None)).distinct().all()
     return sorted(c for (c,) in linhas)
 
@@ -135,7 +137,7 @@ def cidades(db: Session = Depends(get_db), user=Depends(exigir_n1)):
 # ---------------------------------------------------------------- gravadores
 
 @router.get("/gravadores")
-def listar_gravadores(origem: str | None = None, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def listar_gravadores(origem: str | None = None, db: Session = Depends(get_db), user=Depends(VER)):
     q = db.query(FtGravador)
     if origem in ("life", "cliente"):
         q = q.filter(FtGravador.origem == origem)
@@ -144,7 +146,7 @@ def listar_gravadores(origem: str | None = None, db: Session = Depends(get_db), 
 
 
 @router.get("/gravadores/{gravador_id}")
-def detalhe_gravador(gravador_id: str, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def detalhe_gravador(gravador_id: str, db: Session = Depends(get_db), user=Depends(VER)):
     g = db.get(FtGravador, gravador_id)
     if not g:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gravador não encontrado.")
@@ -155,7 +157,7 @@ def detalhe_gravador(gravador_id: str, db: Session = Depends(get_db), user=Depen
 
 
 @router.post("/gravadores", status_code=201)
-def criar_gravador(body: GravadorIn, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n2)):
+def criar_gravador(body: GravadorIn, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
     dados = body.model_dump()
     dados["nome"] = nz.texto(dados["nome"]).upper()
     dados["cidade"] = nz.cidade(dados.get("cidade"))
@@ -169,7 +171,7 @@ def criar_gravador(body: GravadorIn, request: Request, db: Session = Depends(get
 
 
 @router.patch("/gravadores/{gravador_id}")
-def editar_gravador(gravador_id: str, body: GravadorPatch, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n2)):
+def editar_gravador(gravador_id: str, body: GravadorPatch, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
     g = db.get(FtGravador, gravador_id)
     if not g:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gravador não encontrado.")
@@ -202,7 +204,7 @@ def listar_cameras(
     pagina: int = Query(default=1, ge=1),
     por_pagina: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    user=Depends(exigir_n1),
+    user=Depends(VER),
 ):
     consulta = db.query(FtCamera, FtGravador).outerjoin(FtGravador, FtCamera.gravador_id == FtGravador.id)
     if tipo == "lifeguard":
@@ -243,7 +245,7 @@ def listar_cameras(
 
 
 @router.get("/cameras/{camera_id}")
-def detalhe_camera(camera_id: str, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def detalhe_camera(camera_id: str, db: Session = Depends(get_db), user=Depends(VER)):
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
@@ -268,13 +270,14 @@ def detalhe_camera(camera_id: str, db: Session = Depends(get_db), user=Depends(e
         "gravador": _gravador_dict(grav) if grav else None,
         # Só o usuário — a senha sai apenas pela rota /revelar (N2+), com auditoria.
         "credenciais": [{"id": c.id, "usuario": c.usuario, "de": de, "nome_cliente": c.nome_cliente, "tem_senha": bool(c.senha_cifrada)} for de, c in creds],
-        "pode_ver_senhas": user.ft_nivel in ("n2", "admin"),
-        "pode_excluir": user.ft_nivel == "admin",
+        "pode_editar": "doc.editar" in user.ft_permissoes,
+        "pode_ver_senhas": "doc.senhas" in user.ft_permissoes,
+        "pode_excluir": "doc.excluir" in user.ft_permissoes,
     }
 
 
 @router.post("/cameras", status_code=201)
-def criar_camera(body: CameraIn, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def criar_camera(body: CameraIn, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
     dados = _limpar_camera(body.model_dump())
     cam = FtCamera(**dados, atualizado_por_id=user.id)
     _validar_vinculo(db, cam)
@@ -285,7 +288,7 @@ def criar_camera(body: CameraIn, request: Request, db: Session = Depends(get_db)
 
 
 @router.patch("/cameras/{camera_id}")
-def editar_camera(camera_id: str, body: CameraPatch, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def editar_camera(camera_id: str, body: CameraPatch, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
@@ -302,7 +305,7 @@ def editar_camera(camera_id: str, body: CameraPatch, request: Request, db: Sessi
 
 
 @router.delete("/cameras/{camera_id}")
-def excluir_camera(camera_id: str, request: Request, db: Session = Depends(get_db), user=Depends(exigir_admin)):
+def excluir_camera(camera_id: str, request: Request, db: Session = Depends(get_db), user=Depends(EXCLUIR)):
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
@@ -318,7 +321,7 @@ def excluir_camera(camera_id: str, request: Request, db: Session = Depends(get_d
 # -------------------------------------------------------------------- foto
 
 @router.get("/cameras/{camera_id}/foto")
-def ver_foto(camera_id: str, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def ver_foto(camera_id: str, db: Session = Depends(get_db), user=Depends(VER)):
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
@@ -331,7 +334,7 @@ def ver_foto(camera_id: str, db: Session = Depends(get_db), user=Depends(exigir_
 
 @router.post("/cameras/{camera_id}/foto")
 @limiter.limit("30/minute")
-def salvar_foto(camera_id: str, body: FotoIn, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n1)):
+def salvar_foto(camera_id: str, body: FotoIn, request: Request, db: Session = Depends(get_db), user=Depends(EDITAR)):
     """Grava/substitui a foto da documentação. Só existe UMA por câmera.
     Capturas só para exportar não passam por aqui — ficam no navegador/LifeGuard."""
     cam = db.get(FtCamera, camera_id)
@@ -352,7 +355,7 @@ def salvar_foto(camera_id: str, body: FotoIn, request: Request, db: Session = De
 # -------------------------------------------------------------- credenciais
 
 @router.post("/credenciais", status_code=201)
-def criar_credencial(body: CredencialIn, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n2)):
+def criar_credencial(body: CredencialIn, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
     if bool(body.gravador_id) == bool(body.camera_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Informe o gravador OU a câmera.")
     if body.gravador_id and not db.get(FtGravador, body.gravador_id):
@@ -372,7 +375,7 @@ def criar_credencial(body: CredencialIn, request: Request, db: Session = Depends
 
 
 @router.delete("/credenciais/{cred_id}")
-def excluir_credencial(cred_id: str, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n2)):
+def excluir_credencial(cred_id: str, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
     c = db.get(FtCredencial, cred_id)
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Credencial não encontrada.")
@@ -385,7 +388,7 @@ def excluir_credencial(cred_id: str, request: Request, db: Session = Depends(get
 
 @router.post("/credenciais/{cred_id}/revelar")
 @limiter.limit("30/minute")
-def revelar_senha(cred_id: str, request: Request, db: Session = Depends(get_db), user=Depends(exigir_n2)):
+def revelar_senha(cred_id: str, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
     c = db.get(FtCredencial, cred_id)
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Credencial não encontrada.")
@@ -398,31 +401,38 @@ def revelar_senha(cred_id: str, request: Request, db: Session = Depends(get_db),
 # --------------------------------------------------------------- permissões
 
 @router.get("/permissoes")
-def listar_permissoes(db: Session = Depends(get_db), user=Depends(exigir_admin)):
-    niveis = {p.colaborador_id: p.nivel for p in db.query(FtPermissao).all()}
+def listar_permissoes(db: Session = Depends(get_db), user=Depends(ADMIN)):
+    acessos = {a.colaborador_id: normalizar_permissoes(a.permissoes) for a in db.query(FtAcesso).all()}
     pessoas = db.query(Colaborador).filter(Colaborador.status == "ativo").order_by(Colaborador.nome).all()
-    return [{
-        "colaborador_id": p.id, "nome": p.nome, "equipe": p.equipe, "role": p.role,
-        "nivel": "admin" if p.role == "admin" else niveis.get(p.id),
-        "fixo": p.role == "admin",  # admin do Escala é sempre admin aqui
-    } for p in pessoas]
+    return {
+        "catalogo": [{"codigo": k, "label": v} for k, v in PERMISSOES.items()],
+        "presets": PRESETS,
+        "pessoas": [{
+            "colaborador_id": p.id, "nome": p.nome, "equipe": p.equipe, "role": p.role,
+            "permissoes": list(PERMISSOES) if p.role == "admin" else acessos.get(p.id, []),
+            "fixo": p.role == "admin",  # admin do Escala sempre tem tudo
+        } for p in pessoas],
+    }
 
 
 @router.post("/permissoes")
-def definir_permissao(body: PermissaoIn, request: Request, db: Session = Depends(get_db), user=Depends(exigir_admin)):
+def definir_permissao(body: PermissaoIn, request: Request, db: Session = Depends(get_db), user=Depends(ADMIN)):
     alvo = db.get(Colaborador, body.colaborador_id)
     if not alvo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
     if alvo.role == "admin":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Administradores do Escala já têm acesso total a Ferramentas.")
-    atual = db.get(FtPermissao, alvo.id)
-    if body.nivel is None:
+    novas = normalizar_permissoes(body.permissoes)
+    atual = db.get(FtAcesso, alvo.id)
+    antes = normalizar_permissoes(atual.permissoes) if atual else []
+    if not novas:
         if atual:
             db.delete(atual)
     elif atual:
-        atual.nivel = body.nivel
+        atual.permissoes = novas
+        atual.atualizado_por_id = user.id
     else:
-        db.add(FtPermissao(colaborador_id=alvo.id, nivel=body.nivel))
+        db.add(FtAcesso(colaborador_id=alvo.id, permissoes=novas, atualizado_por_id=user.id))
     db.commit()
-    log_action(db, request, user, "ft_permissao", "colaborador", alvo.id, {"nivel": body.nivel})
-    return {"ok": True}
+    log_action(db, request, user, "ft_permissoes", "colaborador", alvo.id, {"antes": antes, "depois": novas})
+    return {"ok": True, "permissoes": novas}

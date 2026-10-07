@@ -10,26 +10,27 @@ sendo a fonte oficial de clientes; aqui é só a referência para busca).
 from datetime import datetime
 
 from sqlalchemy import (
-    Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
+    JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
 )
 
 from app.db.models import gen_id
 from app.db.session import Base
 
 
-class FtPermissao(Base):
-    """Nível de acesso de cada colaborador dentro de Ferramentas.
+class FtAcesso(Base):
+    """Permissões de cada colaborador em Ferramentas, por página/tópico.
 
-    Independente do perfil da escala: ser "colaborador" na escala não dá
-    acesso às senhas dos gravadores. Admin do Escala é sempre admin aqui.
-      n1    -> consulta e cadastra câmeras, atualiza foto
-      n2    -> + vê/edita senhas dos gravadores, edita gravadores
-      admin -> + exclui registros e define permissões
+    `permissoes` é uma lista de códigos (ver seguranca.PERMISSOES), ex.:
+    ["doc.ver", "doc.editar", "referencia", "diagnostico"].
+    Independe do perfil na escala. Admin do Escala sempre tem tudo.
+    (Substitui a antiga tabela ft_permissoes, por nível — que pode ser
+    apagada do banco, não é mais usada.)
     """
-    __tablename__ = "ft_permissoes"
+    __tablename__ = "ft_acessos"
     colaborador_id = Column(String, ForeignKey("colaboradores.id"), primary_key=True)
-    nivel = Column(String, nullable=False)  # n1 | n2 | admin
+    permissoes = Column(JSON, nullable=False, default=list)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    atualizado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
 
 
 class FtGravador(Base):

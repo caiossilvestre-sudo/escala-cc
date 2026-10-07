@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 Tipo = Literal["nvr", "lifeguard"]
 Status = Literal["online", "offline", "desconhecido"]
 Origem = Literal["life", "cliente"]
-Nivel = Literal["n1", "n2", "admin"]
 
 S = lambda n=200: Field(default=None, max_length=n)  # noqa: E731
 
@@ -118,7 +117,7 @@ class CredencialIn(BaseModel):
 
 class PermissaoIn(BaseModel):
     colaborador_id: str = Field(min_length=1, max_length=60)
-    nivel: Nivel | None = None  # None remove o acesso
+    permissoes: list[str] = Field(default_factory=list, max_length=30)  # lista vazia remove o acesso
 
 
 class CameraResumo(BaseModel):

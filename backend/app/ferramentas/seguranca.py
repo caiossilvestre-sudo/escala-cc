@@ -8,38 +8,57 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_colaborador
 from app.db.models import Colaborador
 from app.db.session import get_db
-from app.ferramentas.models import FtPermissao
+from app.ferramentas.models import FtAcesso
 
-NIVEIS = {"n1": 1, "n2": 2, "admin": 3}
-NIVEL_LABEL = {"n1": "N1", "n2": "N2", "admin": "Admin"}
+# Catálogo de permissões, por página/tópico. A ordem é a da tela.
+PERMISSOES = {
+    "doc.ver": "Documentação · consultar",
+    "doc.editar": "Documentação · cadastrar/editar e tirar foto",
+    "doc.senhas": "Documentação · ver senhas e editar gravadores",
+    "doc.excluir": "Documentação · excluir câmeras",
+    "referencia": "Referência",
+    "provisionamento": "Auxílio para provisionamento",
+    "diagnostico": "Diagnosticar",
+    "aovivo": "Ao vivo",
+    "ft.admin": "Gerenciar permissões",
+}
+# Atalhos da tela de permissões (só preenchem as caixinhas)
+PRESETS = {
+    "n1": ["doc.ver", "doc.editar", "referencia", "provisionamento", "diagnostico"],
+    "n2": ["doc.ver", "doc.editar", "doc.senhas", "referencia", "provisionamento", "diagnostico", "aovivo"],
+}
+# Quem tem uma permissão de Documentação precisa conseguir consultar
+IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver"}
+
+
+def normalizar_permissoes(lista) -> list[str]:
+    final = {p for p in (lista or []) if p in PERMISSOES}
+    for p, base in IMPLICA.items():
+        if p in final:
+            final.add(base)
+    return [p for p in PERMISSOES if p in final]  # ordem do catálogo
 
 
 # ---------------------------------------------------------------- permissões
 
-def nivel_do(db: Session, user: Colaborador) -> str | None:
-    """Admin do Escala é sempre admin em Ferramentas. Os demais dependem da
-    tabela ft_permissoes — sem registro lá, não têm acesso ao módulo."""
+def permissoes_do(db: Session, user: Colaborador) -> set[str]:
+    """Admin do Escala tem tudo. Os demais: o que estiver em ft_acessos."""
     if user.role == "admin":
-        return "admin"
-    p = db.get(FtPermissao, user.id)
-    return p.nivel if p else None
+        return set(PERMISSOES)
+    a = db.get(FtAcesso, user.id)
+    return set(normalizar_permissoes(a.permissoes)) if a else set()
 
 
-def exigir_nivel(minimo: str):
+def exigir(permissao: str):
     def dep(user: Colaborador = Depends(get_current_colaborador), db: Session = Depends(get_db)) -> Colaborador:
-        nivel = nivel_do(db, user)
-        if nivel is None:
+        perms = permissoes_do(db, user)
+        if not perms:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Sem acesso ao módulo Ferramentas. Peça liberação a um administrador.")
-        if NIVEIS[nivel] < NIVEIS[minimo]:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, f"Ação restrita ao nível {NIVEL_LABEL[minimo]} ou acima.")
-        user.ft_nivel = nivel  # atributo só em memória, para as rotas usarem
+        if permissao not in perms:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"Sem permissão para: {PERMISSOES[permissao]}.")
+        user.ft_permissoes = perms  # atributo só em memória, para as rotas usarem
         return user
     return dep
-
-
-exigir_n1 = exigir_nivel("n1")
-exigir_n2 = exigir_nivel("n2")
-exigir_admin = exigir_nivel("admin")
 
 
 # --------------------------------------------------------------- criptografia

@@ -17,7 +17,7 @@ import MeusPlantoes from "./pages/MeusPlantoes";
 import CronogramaEquipe from "./pages/CronogramaEquipe";
 import SolicitarFolga from "./pages/SolicitarFolga";
 import ChangePassword from "./pages/ChangePassword";
-import { LifeGuardDocumentacao, LifeGuardDiagnostico, NAV_FERRAMENTAS, useFerramentasNivel } from "./ferramentas";
+import { FerramentasPagina, useFerramentasAcesso } from "./ferramentas";
 
 const NAV_ADMIN = [
   { grupo: "Visão geral", itens: [
@@ -155,13 +155,13 @@ function Shell() {
 
   useEffect(() => { setTab(null); }, [user?.role]);
   useIdleLogout(logout, 15 * 60 * 1000, !!user);
-  const ftNivel = useFerramentasNivel(user?.colaborador_id);
+  const ft = useFerramentasAcesso(user?.colaborador_id);
 
   if (loading) return null;
   if (!user) return <Login />;
 
   const navBase = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-  const nav = ftNivel ? [...navBase, NAV_FERRAMENTAS] : navBase;
+  const nav = ft.nav ? [...navBase, ft.nav] : navBase;
   const primeiroItem = nav[0]?.itens[0]?.id;
   const activeTab = tab || (primeiroItem || "dashboard");
 
@@ -228,8 +228,7 @@ function Shell() {
           {activeTab === "solicitar-folga" && !showAdminPages && <SolicitarFolga user={user} />}
           {activeTab === "minhas-ferias" && isSupervisor && <MinhasFerias user={user} />}
           {activeTab === "senha" && <ChangePassword />}
-          {activeTab === "lg-documentacao" && ftNivel && <LifeGuardDocumentacao nivel={ftNivel} />}
-          {activeTab === "lg-diagnostico" && ftNivel && <LifeGuardDiagnostico />}
+          <FerramentasPagina tab={activeTab} acesso={ft} />
         </fieldset>
       </main>
     </div>
