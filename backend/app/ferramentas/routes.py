@@ -421,8 +421,11 @@ def salvar_foto(camera_id: str, body: FotoIn, request: Request, db: Session = De
 
 
 def _gravar_foto(cam: FtCamera, jpeg: bytes, user) -> bool:
-    substituiu = bool(cam.foto_arquivo)
+    anterior = cam.foto_arquivo
+    substituiu = bool(anterior)
     cam.foto_arquivo = fotos.salvar(cam.id, jpeg)
+    if anterior and anterior != cam.foto_arquivo:
+        fotos.apagar(anterior)  # ex.: foto antiga no disco, nova no SharePoint
     cam.foto_em = datetime.utcnow()
     cam.foto_por_id = user.id
     cam.foto_bytes = len(jpeg)

@@ -273,7 +273,43 @@ LifeGuard. As fotos são geradas fora (pelo seu script Python ou pelo
 
 ---
 
-## 9. Rotas da API (referência)
+## 9. Fotos no SharePoint (opcional)
+
+Com `FERRAMENTAS_FOTOS_DESTINO=sharepoint`, as fotos vão para a biblioteca
+`DocumentacaoLifeGuard/Fotos` do site IOT (`/sites/IOT2`) em vez do disco. O
+servidor só faz a ponte: envia, busca e apaga pelo Microsoft Graph. As telas e
+as permissões não mudam, e os atendentes não precisam de acesso ao site.
+
+1. App no Entra ID "Escala – Documentação LifeGuard": permissão de aplicativo
+   `Sites.Selected` com consentimento de admin, liberado com `write` só no
+   site IOT2, e um client secret (anote o vencimento).
+2. No `.env`: `FERRAMENTAS_SP_TENANT_ID`, `FERRAMENTAS_SP_CLIENT_ID`,
+   `FERRAMENTAS_SP_CLIENT_SECRET`, `FERRAMENTAS_SP_SITE`,
+   `FERRAMENTAS_SP_BIBLIOTECA`, `FERRAMENTAS_SP_PASTA` (ver `.env.example`).
+3. Testar, sem mexer em nenhuma foto:
+   ```bash
+   cd /opt/escala_app/backend && source venv/bin/activate
+   python -m app.ferramentas.testar_sharepoint
+   ```
+4. Se der tudo ok: `FERRAMENTAS_FOTOS_DESTINO=sharepoint` no `.env` e
+   `sudo systemctl restart escala`.
+5. Mover as fotos que já estão no disco:
+   ```bash
+   python -m app.ferramentas.migrar_fotos_sharepoint            # simula
+   python -m app.ferramentas.migrar_fotos_sharepoint --aplicar  # move
+   ```
+
+No banco, foto no SharePoint fica como `sp:<id>.jpg`. Foto antiga no disco
+continua abrindo até ser migrada. Se o SharePoint estiver fora, a ficha mostra
+"Não foi possível acessar as fotos no SharePoint" e o resto da documentação
+continua funcionando.
+
+**O secret vence** (até 24 meses). Quando vencer, as fotos param de abrir.
+Crie um novo no app, troque no `.env` e reinicie o serviço.
+
+---
+
+## 10. Rotas da API (referência)
 
 | Método | Rota | Permissão |
 |---|---|---|

@@ -1,9 +1,9 @@
-"""Foto da documentação: uma por câmera, guardada em disco no servidor.
+"""Foto da documentação: uma por câmera, no disco do servidor ou no SharePoint.
 
-A imagem que chega (do LifeGuard ou do navegador) é sempre reaberta e
+A imagem que chega (arquivo importado pelo navegador) é sempre reaberta e
 regravada pelo Pillow: isso confirma que é uma imagem de verdade, remove
 metadados (EXIF) e padroniza em JPEG de no máximo 1280 px de largura.
-Fica em FERRAMENTAS_FOTOS_DIR/<id-da-camera>.jpg — atualizar sobrescreve.
+Nome do arquivo: <id-da-camera>.jpg — atualizar sobrescreve.
 """
 import base64
 import binascii
@@ -60,7 +60,41 @@ def normalizar_imagem(bruto: bytes) -> tuple[bytes, int, int]:
     return saida.getvalue(), img.width, img.height
 
 
+# ------------------------------------------------------------- onde guardar
+#
+# FERRAMENTAS_FOTOS_DESTINO=disco (padrão) ou sharepoint.
+# No banco, ft_cameras.foto_arquivo guarda o nome do arquivo; quando a foto
+# está no SharePoint ele começa com "sp:" (ex.: "sp:<id>.jpg"). Assim fotos
+# antigas no disco continuam abrindo até serem migradas
+# (python -m app.ferramentas.migrar_fotos_sharepoint).
+
+PREFIXO_SP = "sp:"
+
+
+def destino_sharepoint() -> bool:
+    return os.getenv("FERRAMENTAS_FOTOS_DESTINO", "disco").strip().lower() == "sharepoint"
+
+
+def _nome_arquivo(camera_id: str) -> str:
+    # camera_id é um UUID gerado pelo próprio sistema; mesmo assim, só
+    # letras, números e hífen entram no nome.
+    return "".join(c for c in camera_id if c.isalnum() or c == "-") + ".jpg"
+
+
+def _erro_sp(e) -> HTTPException:
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, f"Não foi possível acessar as fotos no SharePoint: {e}")
+
+
 def salvar(camera_id: str, jpeg: bytes) -> str:
+    """Grava a foto e devolve o valor para ft_cameras.foto_arquivo."""
+    if destino_sharepoint():
+        from app.ferramentas import sharepoint
+        nome = _nome_arquivo(camera_id)
+        try:
+            sharepoint.enviar(nome, jpeg)
+        except sharepoint.ErroSharePoint as e:
+            raise _erro_sp(e)
+        return PREFIXO_SP + nome
     destino = _caminho(camera_id)
     temp = destino.with_suffix(".tmp")
     temp.write_bytes(jpeg)
@@ -68,15 +102,32 @@ def salvar(camera_id: str, jpeg: bytes) -> str:
     return destino.name
 
 
-def ler_base64(arquivo: str) -> str | None:
+def ler_bytes(arquivo: str) -> bytes | None:
+    if arquivo.startswith(PREFIXO_SP):
+        from app.ferramentas import sharepoint
+        try:
+            return sharepoint.baixar(Path(arquivo[len(PREFIXO_SP):]).name)
+        except sharepoint.ErroSharePoint as e:
+            raise _erro_sp(e)
     caminho = pasta_fotos() / Path(arquivo).name
-    if not caminho.exists():
-        return None
-    return base64.b64encode(caminho.read_bytes()).decode("ascii")
+    return caminho.read_bytes() if caminho.exists() else None
+
+
+def ler_base64(arquivo: str) -> str | None:
+    dado = ler_bytes(arquivo)
+    return base64.b64encode(dado).decode("ascii") if dado else None
 
 
 def apagar(arquivo: str | None):
+    """Apaga sem derrubar a operação principal se o arquivo já não existir."""
     if not arquivo:
+        return
+    if arquivo.startswith(PREFIXO_SP):
+        from app.ferramentas import sharepoint
+        try:
+            sharepoint.apagar(Path(arquivo[len(PREFIXO_SP):]).name)
+        except sharepoint.ErroSharePoint as e:
+            print(f"[ferramentas] aviso: não apagou {arquivo} no SharePoint: {e}")
         return
     caminho = pasta_fotos() / Path(arquivo).name
     try:
