@@ -18,6 +18,7 @@ from app.core.rate_limit import limiter
 from app.core.security import hash_password
 from app.db.models import Colaborador
 from app.db.session import Base, SessionLocal, engine, run_safe_migrations
+from app.ferramentas import router as ferramentas_router
 from app.middleware.security_headers import SecurityHeadersMiddleware
 
 app = FastAPI(title="Escala CC API", version="0.1.0")
@@ -43,6 +44,7 @@ app.include_router(routes_ferias.router)
 app.include_router(routes_feriados.router)
 app.include_router(routes_avisos.router)
 app.include_router(routes_configuracoes.router)
+app.include_router(ferramentas_router)  # módulo Ferramentas (LifeGuard · Documentação)
 
 
 @app.get("/health")
