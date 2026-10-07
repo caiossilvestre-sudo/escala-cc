@@ -1,5 +1,5 @@
 fastapi==0.115.0
-uvicorn[standard]==0.30.6
+uvicorn[standard]==0.52.1
 sqlalchemy==2.0.35
 pydantic-settings==2.5.2
 passlib[argon2]==1.7.4
