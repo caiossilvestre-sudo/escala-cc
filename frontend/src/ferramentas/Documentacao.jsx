@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import { TopBar, Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
+import { Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
 import { useToast, useConfirm } from "../lib/hooks";
 import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto } from "./util";
 import CameraFicha from "./CameraFicha";
@@ -9,17 +9,27 @@ import Permissoes from "./Permissoes";
 import ImportarFotos from "./ImportarFotos";
 import "./ferramentas.css";
 
-const TIPOS = [["", "Todas"], ["nvr_life", "NVR Life"], ["nvr_cliente", "NVR externo"], ["lifeguard", "LifeGuard"]];
-const STATUS = [["", "Todos"], ["online", "Online"], ["offline", "Offline"], ["desconhecido", "Sem diagnóstico"]];
+const STATUS = [["", "Situação: todas"], ["online", "Online"], ["offline", "Offline"], ["desconhecido", "Sem diagnóstico"]];
 const POR_PAGINA = 50;
+const TELA_LARGA = 1100; // abaixo disso a lista e a ficha ficam uma embaixo da outra
 
-function Stat({ valor, label, cor }) {
-  return (
-    <div className="card stat" style={{ padding: "14px 16px" }}>
-      <div className="num">{valor ?? "—"}</div>
-      <div className="label"><span className="dot" style={{ background: cor }} />{label}</div>
-    </div>
-  );
+const num = (n) => (n === null || n === undefined ? "…" : Number(n).toLocaleString("pt-BR"));
+
+/** Altura do topo da página até o fim da janela: a página não rola, só a lista e a ficha. */
+function useAlturaRestante() {
+  const ref = useRef(null);
+  const [altura, setAltura] = useState(null);
+  useLayoutEffect(() => {
+    const calcular = () => {
+      if (!ref.current || window.innerWidth <= TELA_LARGA) { setAltura(null); return; }
+      const topo = ref.current.getBoundingClientRect().top + window.scrollY;
+      setAltura(Math.max(480, window.innerHeight - topo));
+    };
+    calcular();
+    window.addEventListener("resize", calcular);
+    return () => window.removeEventListener("resize", calcular);
+  }, []);
+  return [ref, altura];
 }
 
 /** LifeGuard · Documentação — página principal do módulo Ferramentas. */
@@ -37,10 +47,12 @@ export default function Documentacao({ acesso }) {
   const [sel, setSel] = useState(null);
   const [resumo, setResumo] = useState(null);
   const [cidades, setCidades] = useState([]);
+  const manterSel = useRef(false);
+  const [refTela, altura] = useAlturaRestante();
 
   // espera a pessoa parar de digitar antes de buscar
   useEffect(() => {
-    const t = setTimeout(() => { setFiltros((f) => ({ ...f, q: busca })); setPagina(1); }, 300);
+    const t = setTimeout(() => { setFiltros((f) => (f.q === busca ? f : { ...f, q: busca })); setPagina(1); }, 300);
     return () => clearTimeout(t);
   }, [busca]);
 
@@ -50,10 +62,15 @@ export default function Documentacao({ acesso }) {
     const p = new URLSearchParams({ pagina: String(pagina), por_pagina: String(POR_PAGINA) });
     Object.entries(filtros).forEach(([k, v]) => { if (v) p.set(k, String(v)); });
     return api.get(`/ferramentas/cameras?${p}`)
-      .then((r) => { setLista(r); if (!sel && r.itens[0]) setSel(r.itens[0].id); })
+      .then((r) => {
+        setLista(r);
+        // a ficha acompanha a lista: se a câmera aberta saiu da busca, abre a primeira
+        if (manterSel.current) { manterSel.current = false; return; }
+        setSel((atual) => (r.itens.some((c) => c.id === atual) ? atual : (r.itens[0]?.id ?? null)));
+      })
       .catch((e) => setErro(e.message))
       .finally(() => setCarregando(false));
-  }, [filtros, pagina]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filtros, pagina]);
 
   const carregarResumo = () => api.get("/ferramentas/resumo").then(setResumo).catch(() => {});
 
@@ -64,9 +81,24 @@ export default function Documentacao({ acesso }) {
 
   const voltarDoForm = (id) => {
     setModo({ tela: "lista" });
-    if (id) setSel(id);
+    if (id) { setSel(id); manterSel.current = true; }
     carregar();
     carregarResumo();
+  };
+
+  // ↑ ↓ andam pela lista
+  const teclaLista = (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const itens = lista.itens;
+    if (!itens.length) return;
+    e.preventDefault();
+    const i = itens.findIndex((c) => c.id === sel);
+    const prox = e.key === "ArrowDown" ? Math.min(itens.length - 1, i + 1) : Math.max(0, i - 1);
+    const id = itens[prox].id;
+    setSel(id);
+    const linha = document.getElementById(`ft-linha-${id}`);
+    linha?.focus({ preventScroll: true });
+    linha?.scrollIntoView({ block: "nearest" });
   };
 
   if (modo.tela === "nova" || modo.tela === "editar") {
@@ -104,79 +136,98 @@ export default function Documentacao({ acesso }) {
     } catch (e) { showToast(e.message); } finally { setExportando(false); }
   };
 
+  const tipos = [
+    ["", "Todas", resumo?.total],
+    ["nvr_life", "NVR Life", resumo?.cameras_nvr_life],
+    ["nvr_cliente", "NVR externo", resumo?.cameras_nvr_cliente],
+    ["lifeguard", "LifeGuard", resumo?.cameras_lifeguard],
+  ];
+
   return (
     <>
-      <TopBar
-        title="LifeGuard · Documentação"
-        subtitle="Câmeras de NVR Life, NVR externo e LifeGuard, com a foto de documentação"
-        right={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="ft-doc" ref={refTela} style={altura ? { height: altura } : undefined}>
+        <header className="ft-doc-topo">
+          <div className="ft-doc-titulo">
+            <h1>LifeGuard · Documentação</h1>
+            <span>{num(resumo?.gravadores)} gravadores · {num(resumo?.total)} câmeras</span>
+          </div>
+          <div className="ft-doc-acoes">
             {acesso.tem("ft.admin") && <button className="btn btn-ghost" onClick={() => setModo({ tela: "permissoes" })}>Permissões</button>}
             <button className="btn btn-ghost" disabled={exportando} onClick={exportarCsv}>{exportando ? "Exportando…" : "Exportar lista (CSV)"}</button>
             {acesso.tem("doc.editar") && <button className="btn btn-ghost" onClick={() => setModo({ tela: "importar" })}>Importar fotos</button>}
             {acesso.tem("doc.editar") && <button className="btn btn-primary" onClick={() => setModo({ tela: "nova" })}>+ Nova câmera</button>}
           </div>
-        }
-      />
-      <div className="content">
-        <ErrorBox error={erro} />
+        </header>
 
-        <div className="ft-stats">
-          <Stat valor={resumo?.cameras_nvr_life} label="Câmeras em NVR Life" cor="#2F6FE8" />
-          <Stat valor={resumo?.cameras_nvr_cliente} label="Câmeras em NVR externo" cor="#6A55C2" />
-          <Stat valor={resumo?.cameras_lifeguard} label="Câmeras LifeGuard" cor="var(--primary)" />
-          <Stat valor={resumo?.gravadores} label="Gravadores" cor="var(--ink)" />
-          <Stat valor={resumo?.sem_foto} label="Sem foto de documentação" cor="var(--pendente)" />
-        </div>
-
-        <div className="card ft-filtros" style={{ padding: 12 }}>
+        <div className="ft-doc-filtros">
           <input type="search" aria-label="Buscar" placeholder="Buscar por nome, contrato, cliente, IP, MAC, PPPoE, NVR ou ID LifeGuard" value={busca} onChange={(e) => setBusca(e.target.value)} />
           <div className="ft-seg" role="group" aria-label="Tipo">
-            {TIPOS.map(([v, l]) => <button key={v} type="button" className={filtros.tipo === v ? "on" : ""} onClick={() => filtro("tipo", v)}>{l}</button>)}
+            {tipos.map(([v, l, n]) => (
+              <button key={v} type="button" className={filtros.tipo === v ? "on" : ""} aria-pressed={filtros.tipo === v} onClick={() => filtro("tipo", v)}>
+                {l} <span className="qtd">{num(n)}</span>
+              </button>
+            ))}
           </div>
-          <select aria-label="Situação" value={filtros.status} onChange={(e) => filtro("status", e.target.value)}>
-            {STATUS.map(([v, l]) => <option key={v} value={v}>{v ? l : "Situação: todas"}</option>)}
-          </select>
+          <button type="button" className={`ft-chip ${filtros.sem_foto ? "on" : ""}`} aria-pressed={filtros.sem_foto} onClick={() => filtro("sem_foto", !filtros.sem_foto)}>
+            Sem foto <span className="qtd">{num(resumo?.sem_foto)}</span>
+          </button>
           <select aria-label="Cidade" value={filtros.cidade} onChange={(e) => filtro("cidade", e.target.value)}>
             <option value="">Cidade: todas</option>
             {cidades.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <label className="chk"><input type="checkbox" checked={filtros.sem_foto} onChange={(e) => filtro("sem_foto", e.target.checked)} /> Só sem foto</label>
+          <select aria-label="Situação" value={filtros.status} onChange={(e) => filtro("status", e.target.value)}>
+            {STATUS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
         </div>
 
-        <div className="ft-layout">
-          <div className="card ft-lista">
-            <div className="ft-tabela-wrap">
+        {erro && <div style={{ padding: "10px 20px 0" }}><ErrorBox error={erro} /></div>}
+
+        <div className="ft-doc-corpo">
+          <section className="ft-doc-lista" aria-label="Lista de câmeras">
+            <div className="ft-linha ft-linha-cab" aria-hidden="true">
+              <span>Foto</span><span>Câmera / local</span><span className="c-origem">Origem</span><span>Cliente / contrato</span><span className="c-rede">IP / MAC</span>
+            </div>
+            <div className="ft-rolagem" onKeyDown={teclaLista}>
               {carregando && lista.itens.length === 0 ? <Spinner /> : lista.itens.length === 0 ? <div className="empty">Nenhuma câmera encontrada com esses filtros.</div> : (
-                <table className="tbl ft-tbl">
-                  <thead><tr><th style={{ width: 34 }}>Foto</th><th>Câmera / local</th><th>Origem</th><th>Cliente / contrato</th><th>IP / MAC</th></tr></thead>
-                  <tbody>{lista.itens.map((c) => {
-                    const t = TIPO_INFO[tipoDe(c)];
-                    const st = STATUS_INFO[c.status] || STATUS_INFO.desconhecido;
-                    return (
-                      <tr key={c.id} className={c.id === sel ? "sel" : ""} onClick={() => setSel(c.id)} tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSel(c.id); } }} aria-selected={c.id === sel}>
-                        <td><span className={`ft-thumb ${c.tem_foto ? "tem" : "nao"}`} title={c.tem_foto ? "Tem foto de documentação" : "Sem foto"} /></td>
-                        <td><div className="ft-ellipsis" style={{ fontWeight: 600 }}><span className={`ft-dot ${c.status}`} title={st.label} />{c.nome}</div><div className="sub ft-ellipsis">{c.descricao_local || "—"}</div></td>
-                        <td><Pill status={t.pill}>{t.label}</Pill><div className="sub ft-ellipsis">{origemTexto(c)}</div></td>
-                        <td><div className="ft-ellipsis">{c.nome_cliente || "—"}</div><div className="sub">{c.contrato_ixc ? <span className="mono">{c.contrato_ixc}</span> : "—"}{c.cidade ? ` · ${c.cidade}` : ""}</div></td>
-                        <td className="mono" style={{ fontSize: 11.5 }}><div>{c.ip || "—"}</div><div className="sub">{c.mac || ""}</div></td>
-                      </tr>
-                    );
-                  })}</tbody>
-                </table>
+                lista.itens.map((c) => {
+                  const t = TIPO_INFO[tipoDe(c)];
+                  const st = STATUS_INFO[c.status] || STATUS_INFO.desconhecido;
+                  const ativa = c.id === sel;
+                  return (
+                    <button key={c.id} id={`ft-linha-${c.id}`} type="button" className={`ft-linha ${ativa ? "sel" : ""}`} aria-pressed={ativa} onClick={() => setSel(c.id)}>
+                      <span className={`ft-thumb ${c.tem_foto ? "tem" : "nao"}`} title={c.tem_foto ? "Tem foto de documentação" : "Sem foto"} />
+                      <span className="cel">
+                        <span className="l1"><span className={`ft-dot ${c.status}`} title={st.label} />{c.nome}</span>
+                        <span className="l2">{c.descricao_local || "—"}</span>
+                      </span>
+                      <span className="cel c-origem ft-origem">
+                        <Pill status={t.pill}>{t.label}</Pill>
+                        <span className="l2">{origemTexto(c)}</span>
+                      </span>
+                      <span className="cel">
+                        <span className="l1 n">{c.nome_cliente || "—"}</span>
+                        <span className="l2">{c.contrato_ixc ? <span className="mono">{c.contrato_ixc}</span> : "—"}{c.cidade ? ` · ${c.cidade}` : ""}</span>
+                      </span>
+                      <span className="cel c-rede mono">
+                        <span className="l1 n">{c.ip || "—"}</span>
+                        <span className="l2">{c.mac || ""}</span>
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
             <div className="ft-paginacao">
-              <span>{lista.total} câmera{lista.total === 1 ? "" : "s"}{carregando ? " · atualizando…" : ""}</span>
+              <span>{num(lista.total)} câmera{lista.total === 1 ? "" : "s"}{carregando ? " · atualizando…" : " · use ↑ ↓ para navegar"}</span>
               <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <button className="btn btn-ghost btn-sm" disabled={pagina <= 1} onClick={() => setPagina((p) => p - 1)}>Anterior</button>
                 Página {lista.pagina || pagina} de {lista.paginas}
                 <button className="btn btn-ghost btn-sm" disabled={pagina >= lista.paginas} onClick={() => setPagina((p) => p + 1)}>Próxima</button>
               </span>
             </div>
-          </div>
+          </section>
 
-          <aside className="card ft-lado" aria-label="Ficha da câmera">
+          <aside className="ft-doc-ficha" aria-label="Ficha da câmera">
             {sel ? (
               <CameraFicha
                 key={sel}

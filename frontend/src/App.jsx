@@ -17,7 +17,7 @@ import MeusPlantoes from "./pages/MeusPlantoes";
 import CronogramaEquipe from "./pages/CronogramaEquipe";
 import SolicitarFolga from "./pages/SolicitarFolga";
 import ChangePassword from "./pages/ChangePassword";
-import { FerramentasPagina, useFerramentasAcesso } from "./ferramentas";
+import { FerramentasPagina, MenuFerramentas, useFerramentasAcesso } from "./ferramentas";
 
 const NAV_ADMIN = [
   { grupo: "Visão geral", itens: [
@@ -161,7 +161,7 @@ function Shell() {
   if (!user) return <Login />;
 
   const navBase = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-  const nav = ft.nav ? [...navBase, ft.nav] : navBase;
+  const nav = navBase;
   const primeiroItem = nav[0]?.itens[0]?.id;
   const activeTab = tab || (primeiroItem || "dashboard");
 
@@ -186,6 +186,7 @@ function Shell() {
               ))}
             </div>
           ))}
+          <MenuFerramentas acesso={ft} ativo={activeTab} onIr={setTab} />
         </nav>
         <div className="sidebar-footer">
           <div className="nav-footnote">

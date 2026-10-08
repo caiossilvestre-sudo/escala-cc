@@ -16,8 +16,8 @@ no seu diretório local, faça commit + push pelo GitHub Desktop e depois
 | `backend/app/main.py` | 2 linhas: import e `include_router` |
 | `backend/requirements.txt` | `cryptography`, `Pillow`, `openpyxl` (e `psycopg2-binary>=2.9.10`) |
 | `backend/.env.example` | 2 variáveis novas no final |
-| `frontend/src/ferramentas/` | Telas React: Documentação, ficha, cadastro, importar fotos, permissões |
-| `frontend/src/App.jsx` | 4 linhas para o grupo Ferramentas · LifeGuard |
+| `frontend/src/ferramentas/` | Telas React: Documentação, ficha, cadastro, importar fotos, permissões, menu |
+| `frontend/src/App.jsx` | 3 linhas para o menu Ferramentas › LifeGuard e a página |
 
 **Nunca no repositório (ele é público):** a planilha, o relatório de
 importação, fotos e CSVs exportados.
@@ -84,27 +84,34 @@ Sem isso a tela abre, mas tudo dá "Erro na requisição".
 
 ## 3. Frontend — `App.jsx`
 
-A pasta `frontend/src/ferramentas/` já está pronta. No `App.jsx` são 3 ajustes
-(o arquivo completo também vai no pacote):
+A pasta `frontend/src/ferramentas/` já está pronta. No `App.jsx` são estes
+ajustes (o arquivo completo também vai no pacote):
 
 ```jsx
 // (1) junto dos outros imports
-import { FerramentasPagina, useFerramentasAcesso } from "./ferramentas";
+import { FerramentasPagina, MenuFerramentas, useFerramentasAcesso } from "./ferramentas";
 
 // (2) dentro do Shell(), logo depois do useIdleLogout(...)
 const ft = useFerramentasAcesso(user?.colaborador_id);
 
-// (3) trocar a linha do `const nav = ...` por:
-const navBase = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-const nav = ft.nav ? [...navBase, ft.nav] : navBase;
+// (3) o menu do Escala fica como era
+const nav = navBase;
 
-// (4) junto dos outros {activeTab === ...}, dentro do <fieldset>
+// (4) dentro do <nav className="nav">, depois do nav.map(...)
+<MenuFerramentas acesso={ft} ativo={activeTab} onIr={setTab} />
+
+// (5) junto dos outros {activeTab === ...}, dentro do <fieldset>
 <FerramentasPagina tab={activeTab} acesso={ft} />
 ```
 
-O grupo **Ferramentas · LifeGuard** tem uma página só: **Documentação**. Ele
-aparece para quem tem pelo menos "consultar". Se um dia entrar outra página,
-ela vai em `ferramentas/index.js` — **não precisa mexer de novo no App.jsx**.
+O menu fica **Ferramentas › LifeGuard › Documentação** (LifeGuard abre e
+fecha). Ele aparece para quem tem pelo menos "consultar". Página nova do
+módulo entra em `ferramentas/paginas.js` — **não precisa mexer de novo no
+App.jsx**.
+
+A tela Documentação ocupa a janela inteira: a página não rola, a lista e a
+ficha têm cada uma a sua barra. Em tela estreita (até 1100 px) a ficha vai
+para baixo da lista e a página volta a rolar.
 
 Atenção: o `<fieldset disabled={isViewer}>` do App desabilita tudo para o
 perfil visualizador — mesmo com permissão em Ferramentas ele só consegue

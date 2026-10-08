@@ -1,20 +1,17 @@
 // Ponto de entrada do módulo Ferramentas para o App.jsx do Escala.
 //
-// No App.jsx são só 3 ajustes (ver INTEGRACAO.md):
+// No App.jsx (ver INTEGRACAO.md):
 //   const ft = useFerramentasAcesso(user?.colaborador_id);
-//   const nav = ft.nav ? [...navBase, ft.nav] : navBase;
-//   <FerramentasPagina tab={activeTab} acesso={ft} />
-// Páginas novas do módulo entram aqui, sem mexer de novo no App.jsx.
-import { createElement, useEffect, useState } from "react";
+//   <MenuFerramentas acesso={ft} ativo={activeTab} onIr={setTab} />   (dentro do <nav>)
+//   <FerramentasPagina tab={activeTab} acesso={ft} />                  (dentro do <main>)
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import Documentacao from "./Documentacao";
+import { PAGINAS_LIFEGUARD } from "./paginas";
 
-// id da aba no menu -> permissão necessária + página
-export const PAGINAS_LIFEGUARD = [
-  { id: "lg-documentacao", label: "Documentação", permissao: "doc.ver", render: (acesso) => createElement(Documentacao, { acesso }) },
-];
+export { PAGINAS_LIFEGUARD };
+export { default as MenuFerramentas } from "./MenuFerramentas";
 
-/** Permissões da pessoa logada em Ferramentas + o grupo do menu já montado. */
+/** Permissões da pessoa logada em Ferramentas. */
 export function useFerramentasAcesso(userId) {
   const [permissoes, setPermissoes] = useState([]);
   useEffect(() => {
@@ -22,8 +19,7 @@ export function useFerramentasAcesso(userId) {
     api.get("/ferramentas/me").then((r) => setPermissoes(r.permissoes || [])).catch(() => setPermissoes([]));
   }, [userId]);
   const tem = (p) => permissoes.includes(p);
-  const itens = PAGINAS_LIFEGUARD.filter((p) => tem(p.permissao)).map(({ id, label }) => ({ id, label }));
-  return { permissoes, tem, nav: itens.length ? { grupo: "Ferramentas · LifeGuard", itens } : null };
+  return { permissoes, tem };
 }
 
 /** Renderiza a página de Ferramentas da aba ativa (ou nada, se a aba não é do módulo). */

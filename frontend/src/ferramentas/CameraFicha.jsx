@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Pill } from "../components/UI";
-import { TIPO_INFO, STATUS_INFO, tipoDe, dataHora, kb, baixarImagem, lerArquivo, reduzirImagem } from "./util";
+import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, dataHora, kb, baixarImagem, lerArquivo, reduzirImagem } from "./util";
 
 function Campos({ itens }) {
   const visiveis = itens.filter(([, v]) => v !== null && v !== undefined && v !== "");
-  if (visiveis.length === 0) return <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nada preenchido.</div>;
+  if (visiveis.length === 0) return <div className="ft-vazio">Nada preenchido.</div>;
   return (
     <dl className="ft-dl">
-      {visiveis.map(([k, v, mono]) => (
-        <div key={k}><dt>{k}</dt><dd className={mono ? "mono" : ""}>{String(v)}</dd></div>
+      {visiveis.map(([k, v, mono, largo]) => (
+        <div key={k} className={largo ? "largo" : ""}><dt>{k}</dt><dd className={mono ? "mono" : ""}>{String(v)}</dd></div>
       ))}
     </dl>
+  );
+}
+
+function Linha({ titulo, children }) {
+  return (
+    <div className="ft-quadro-linha">
+      <div className="ft-quadro-titulo">{titulo}</div>
+      <div style={{ minWidth: 0 }}>{children}</div>
+    </div>
   );
 }
 
@@ -47,7 +56,7 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
     return () => Object.values(timers.current).forEach(clearTimeout);
   }, [cameraId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (erro) return <div className="ft-sec"><div className="warn-box">{erro}</div></div>;
+  if (erro) return <div style={{ padding: 18 }}><div className="warn-box">{erro}</div></div>;
   if (!cam) return <div className="empty">Carregando…</div>;
 
   const tipo = TIPO_INFO[tipoDe(cam)];
@@ -96,90 +105,85 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
 
   const g = cam.gravador;
   return (
-    <>
-      <div className="ft-sec">
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <Pill status={tipo.pill} title={tipo.dica}>{tipo.label}</Pill>
-          {cam.status !== "desconhecido" && <Pill status={st.pill}>{st.label}</Pill>}
+    <div className="ft-ficha">
+      <div className="ft-ficha-topo">
+        <div style={{ minWidth: 0, flex: "1 1 220px" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <Pill status={tipo.pill} title={tipo.dica}>{tipo.label}</Pill>
+            {cam.status !== "desconhecido" && <Pill status={st.pill}>{st.label}</Pill>}
+            <span className="ft-origem-txt">{origemTexto(cam)}</span>
+          </div>
+          <div className="display ft-ficha-nome">{cam.nome}</div>
+          <div className="ft-ficha-sub">{[cam.descricao_local, cam.nome_cliente].filter(Boolean).join(" · ") || "—"}</div>
         </div>
-        <div className="display" style={{ fontSize: 18, fontWeight: 600, marginTop: 8 }}>{cam.nome}</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>
-          {[cam.descricao_local, cam.nome_cliente].filter(Boolean).join(" · ") || "—"}
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          {cam.pode_editar && <button className="btn btn-ghost btn-sm" onClick={() => onEditar(cam.id)}>Editar dados</button>}
+        <div className="ft-ficha-botoes">
+          {cam.pode_editar && (
+            <label className={`btn btn-primary btn-sm ${enviando ? "disabled" : ""}`} style={{ cursor: enviando ? "wait" : "pointer" }}>
+              {enviando ? "Importando…" : cam.tem_foto ? "Substituir foto" : "Importar foto"}
+              <input type="file" accept="image/*" onChange={importarFoto} disabled={enviando} style={{ display: "none" }} />
+            </label>
+          )}
+          {cam.pode_editar && <button className="btn btn-ghost btn-sm" onClick={() => onEditar(cam.id)}>Editar</button>}
           {cam.pode_excluir && <button className="btn btn-danger btn-sm" onClick={excluir}>Excluir</button>}
         </div>
       </div>
 
-      <div className="ft-sec">
-        <h3>Foto da documentação</h3>
+      <div className="ft-ficha-corpo">
         {cam.tem_foto ? (
-          <>
+          <div>
             <div className="ft-foto">
               {foto ? <img src={foto} alt={`Imagem da câmera ${cam.nome}`} /> : <div className="empty" style={{ color: "#9AA2B8" }}>{carregandoFoto ? "Carregando foto…" : "Foto indisponível"}</div>}
             </div>
-            <div className="ft-legenda">Registrada em {dataHora(cam.foto_em)}{cam.foto_por_nome ? ` por ${cam.foto_por_nome}` : ""}{cam.foto_bytes ? ` · ${kb(cam.foto_bytes)}` : ""}</div>
-          </>
-        ) : (
-          <div className="ft-foto-vazia">
-            <span>Esta câmera ainda não tem foto de documentação.</span>
+            <div className="ft-legenda">
+              <span>Registrada em {dataHora(cam.foto_em)}{cam.foto_por_nome ? ` por ${cam.foto_por_nome}` : ""}{cam.foto_bytes ? ` · ${kb(cam.foto_bytes)}` : ""}</span>
+              {foto && <button type="button" className="ft-link" onClick={() => baixarImagem(foto, `${cam.nome}_documentacao`)}>Exportar foto</button>}
+            </div>
           </div>
+        ) : (
+          <div className="ft-foto-vazia">Sem foto de documentação{cam.pode_editar ? " — use \"Importar foto\" acima." : "."}</div>
         )}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-          {cam.pode_editar && (
-            <label className={`btn btn-primary btn-sm ${enviando ? "disabled" : ""}`} style={{ cursor: enviando ? "wait" : "pointer" }}>
-              {enviando ? "Importando…" : cam.tem_foto ? "Substituir foto (importar arquivo)" : "Importar foto"}
-              <input type="file" accept="image/*" onChange={importarFoto} disabled={enviando} style={{ display: "none" }} />
-            </label>
+
+        <div className="ft-quadro">
+          {cam.tipo === "lifeguard" ? (
+            <Linha titulo="LifeGuard">
+              <Campos itens={[["ID da câmera", cam.lg_id, true], ["Porta LifeGuard", cam.porta_lifeguard, true], ["Porta monitoramento", cam.porta_monitoramento, true], ["Dias de gravação", cam.dias_gravacao && `${cam.dias_gravacao} dias`], ["Link de provisionamento", cam.link_provisionamento, true, true]]} />
+            </Linha>
+          ) : (
+            <Linha titulo="Gravador">
+              <Campos itens={[["Gravador", g?.nome], ["Canal", cam.canal, true], ["Instalado", g?.origem === "cliente" ? "No cliente (NVR externo)" : "Na Life (NVR Life)"], ["Acesso ao NVR", g?.url_acesso, true, true], ["Nº câmera", cam.numero_cam, true], ["Porta de serviço", g?.porta_servico, true], ["Porta pública", cam.porta_publica, true], ["Dias de gravação", (cam.dias_gravacao || g?.dias_gravacao) && `${cam.dias_gravacao || g?.dias_gravacao} dias`]]} />
+            </Linha>
           )}
-          {foto && <button className="btn btn-ghost btn-sm" onClick={() => baixarImagem(foto, `${cam.nome}_documentacao`)}>Exportar foto</button>}
+          <Linha titulo="Cliente">
+            <Campos itens={[["Cliente", cam.nome_cliente, false, true], ["Contrato", cam.contrato_ixc, true], ["Cidade", cam.cidade], ["ID cliente IXC", cam.id_cliente_ixc, true], ["PPPoE", cam.pppoe, true], ["IP do PPPoE", cam.ip_pppoe, true]]} />
+          </Linha>
+          <Linha titulo="Rede">
+            <Campos itens={[["IP da câmera", cam.ip && `${cam.ip}${cam.porta ? `:${cam.porta}` : ""}`, true], ["MAC", cam.mac, true], ["Modelo", cam.modelo], ["Firmware", cam.firmware, true], ["Compressão", cam.compressao], ["Última edição", cam.atualizado_por_nome ? `${cam.atualizado_por_nome} · ${dataHora(cam.atualizado_em)}` : dataHora(cam.atualizado_em), false, true]]} />
+          </Linha>
+          {cam.observacoes && (
+            <Linha titulo="Observações">
+              <div style={{ fontSize: 12, whiteSpace: "pre-line" }}>{cam.observacoes}</div>
+            </Linha>
+          )}
+          <Linha titulo="Acessos">
+            {cam.credenciais.length === 0 ? <div className="ft-vazio">{cam.tipo === "lifeguard" ? "Câmera LifeGuard — sem acesso de gravador." : "Nenhum usuário cadastrado."}</div> : (
+              <>
+                <div className="ft-creds">
+                  {cam.credenciais.map((c) => (
+                    <span key={c.id} className="ft-cred mono">
+                      <span title={c.de === "gravador" && !c.nome_cliente ? "Usuário geral do NVR" : undefined}>{c.usuario}</span>
+                      <span className="s">{senhas[c.id] !== undefined ? senhas[c.id] : c.tem_senha ? "••••••" : "(sem senha)"}</span>
+                      {cam.pode_ver_senhas && c.tem_senha && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => revelar(c.id)}>{senhas[c.id] !== undefined ? "Ocultar" : "Mostrar"}</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                {cam.pode_ver_senhas && <div className="ft-vazio" style={{ marginTop: 5 }}>A senha some em 30 s e cada visualização fica registrada.</div>}
+              </>
+            )}
+          </Linha>
         </div>
-        <div className="info-box" style={{ marginTop: 10, marginBottom: 0 }}>
-          Uma foto por câmera. Importar uma nova substitui a anterior.
-        </div>
       </div>
-
-      <div className="ft-sec">
-        <h3>{cam.tipo === "lifeguard" ? "LifeGuard" : "Gravador"}</h3>
-        {cam.tipo === "lifeguard" ? (
-          <Campos itens={[["ID da câmera", cam.lg_id, true], ["Porta LifeGuard", cam.porta_lifeguard, true], ["Porta monitoramento", cam.porta_monitoramento, true], ["Dias de gravação", cam.dias_gravacao && `${cam.dias_gravacao} dias`], ["Link de provisionamento", cam.link_provisionamento, true]]} />
-        ) : (
-          <Campos itens={[["Gravador", g?.nome], ["Instalado", g?.origem === "cliente" ? "No cliente (NVR externo)" : "Na Life (NVR Life)"], ["Canal", cam.canal, true], ["Nº câmera", cam.numero_cam, true], ["Acesso ao NVR", g?.url_acesso, true], ["Porta de serviço", g?.porta_servico, true], ["Porta pública", cam.porta_publica, true], ["Dias de gravação", (cam.dias_gravacao || g?.dias_gravacao) && `${cam.dias_gravacao || g?.dias_gravacao} dias`]]} />
-        )}
-      </div>
-
-      <div className="ft-sec">
-        <h3>Cliente</h3>
-        <Campos itens={[["Cliente", cam.nome_cliente], ["Contrato IXC", cam.contrato_ixc, true], ["ID cliente IXC", cam.id_cliente_ixc, true], ["Cidade", cam.cidade], ["PPPoE", cam.pppoe, true], ["IP do PPPoE", cam.ip_pppoe, true]]} />
-      </div>
-
-      <div className="ft-sec">
-        <h3>Rede e equipamento</h3>
-        <Campos itens={[["IP da câmera", cam.ip && `${cam.ip}${cam.porta ? `:${cam.porta}` : ""}`, true], ["MAC", cam.mac, true], ["Modelo", cam.modelo], ["Compressão", cam.compressao], ["Firmware", cam.firmware, true], ["Última edição", cam.atualizado_por_nome ? `${cam.atualizado_por_nome} · ${dataHora(cam.atualizado_em)}` : dataHora(cam.atualizado_em)]]} />
-        {cam.observacoes && <div className="warn-box" style={{ marginTop: 12, marginBottom: 0, whiteSpace: "pre-line" }}>{cam.observacoes}</div>}
-      </div>
-
-      <div className="ft-sec">
-        <h3>
-          Acessos
-          <Pill status="pendente">{cam.pode_ver_senhas ? "Você pode ver as senhas" : "Senhas: permissão própria"}</Pill>
-        </h3>
-        {cam.credenciais.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhum usuário cadastrado.</div> : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {cam.credenciais.map((c) => (
-              <div key={c.id} className="ft-cred">
-                <span className="u mono">{c.usuario}{c.de === "gravador" && !c.nome_cliente ? <span style={{ color: "var(--text-muted)", fontFamily: "Inter, sans-serif" }}> · geral do NVR</span> : null}</span>
-                <span className="s mono">{senhas[c.id] !== undefined ? senhas[c.id] : c.tem_senha ? "••••••••••" : "(sem senha)"}</span>
-                {cam.pode_ver_senhas && c.tem_senha && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => revelar(c.id)}>{senhas[c.id] !== undefined ? "Ocultar" : "Mostrar"}</button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>A senha some sozinha em 30 s. Cada visualização fica registrada no log de auditoria.</div>
-      </div>
-    </>
+    </div>
   );
 }
