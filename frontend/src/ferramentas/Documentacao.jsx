@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
 import { useToast, useConfirm } from "../lib/hooks";
-import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto } from "./util";
+import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, useAlturaRestante, num } from "./util";
 import CameraFicha from "./CameraFicha";
 import CameraForm from "./CameraForm";
 import Permissoes from "./Permissoes";
@@ -11,34 +11,13 @@ import "./ferramentas.css";
 
 const STATUS = [["", "Situação: todas"], ["online", "Online"], ["offline", "Offline"], ["desconhecido", "Sem diagnóstico"]];
 const POR_PAGINA = 50;
-const TELA_LARGA = 1100; // abaixo disso a lista e a ficha ficam uma embaixo da outra
-
-const num = (n) => (n === null || n === undefined ? "…" : Number(n).toLocaleString("pt-BR"));
-
-/** Altura do topo da página até o fim da janela: a página não rola, só a lista e a ficha. */
-function useAlturaRestante() {
-  const ref = useRef(null);
-  const [altura, setAltura] = useState(null);
-  useLayoutEffect(() => {
-    const calcular = () => {
-      if (!ref.current || window.innerWidth <= TELA_LARGA) { setAltura(null); return; }
-      const topo = ref.current.getBoundingClientRect().top + window.scrollY;
-      setAltura(Math.max(480, window.innerHeight - topo));
-    };
-    calcular();
-    window.addEventListener("resize", calcular);
-    return () => window.removeEventListener("resize", calcular);
-  }, []);
-  return [ref, altura];
-}
-
 /** LifeGuard · Documentação — página principal do módulo Ferramentas. */
 export default function Documentacao({ acesso }) {
   const { toast, showToast } = useToast();
   const { confirm, confirmState, resolveConfirm } = useConfirm();
   const [modo, setModo] = useState({ tela: "lista" }); // lista | nova | editar | permissoes | importar
   const [exportando, setExportando] = useState(false);
-  const [filtros, setFiltros] = useState({ q: "", tipo: "", status: "", cidade: "", sem_foto: false });
+  const [filtros, setFiltros] = useState({ q: "", tipo: "", status: "", cidade: "", gravador_id: "", sem_foto: false });
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
   const [lista, setLista] = useState({ itens: [], total: 0, paginas: 1 });
@@ -47,6 +26,7 @@ export default function Documentacao({ acesso }) {
   const [sel, setSel] = useState(null);
   const [resumo, setResumo] = useState(null);
   const [cidades, setCidades] = useState([]);
+  const [gravadores, setGravadores] = useState([]);
   const manterSel = useRef(false);
   const [refTela, altura] = useAlturaRestante();
 
@@ -75,7 +55,11 @@ export default function Documentacao({ acesso }) {
   const carregarResumo = () => api.get("/ferramentas/resumo").then(setResumo).catch(() => {});
 
   useEffect(() => { carregar(); }, [carregar]);
-  useEffect(() => { carregarResumo(); api.get("/ferramentas/cidades").then(setCidades).catch(() => {}); }, []);
+  useEffect(() => {
+    carregarResumo();
+    api.get("/ferramentas/cidades").then(setCidades).catch(() => {});
+    api.get("/ferramentas/gravadores").then(setGravadores).catch(() => {});
+  }, []);
 
   const filtro = (k, v) => { setFiltros((f) => ({ ...f, [k]: v })); setPagina(1); };
 
@@ -102,7 +86,7 @@ export default function Documentacao({ acesso }) {
   };
 
   if (modo.tela === "nova" || modo.tela === "editar") {
-    return (<><CameraForm cameraId={modo.id} onVoltar={voltarDoForm} showToast={showToast} confirm={confirm} /><Toast toast={toast} /><ConfirmModal state={confirmState} onResolve={resolveConfirm} /></>);
+    return (<><CameraForm cameraId={modo.id} substituir={!!modo.substituir} onVoltar={voltarDoForm} showToast={showToast} confirm={confirm} /><Toast toast={toast} /><ConfirmModal state={confirmState} onResolve={resolveConfirm} /></>);
   }
   if (modo.tela === "permissoes") {
     return (<><Permissoes onVoltar={() => setModo({ tela: "lista" })} showToast={showToast} /><Toast toast={toast} /></>);
@@ -118,6 +102,7 @@ export default function Documentacao({ acesso }) {
       const p = new URLSearchParams();
       if (filtros.tipo) p.set("tipo", filtros.tipo);
       if (filtros.cidade) p.set("cidade", filtros.cidade);
+      if (filtros.gravador_id) p.set("gravador_id", filtros.gravador_id);
       const linhas = await api.get(`/ferramentas/cameras-exportar?${p}`);
       if (!linhas.length) { showToast("Nada para exportar com esses filtros."); return; }
       const cols = Object.keys(linhas[0]);
@@ -171,6 +156,11 @@ export default function Documentacao({ acesso }) {
           <button type="button" className={`ft-chip ${filtros.sem_foto ? "on" : ""}`} aria-pressed={filtros.sem_foto} onClick={() => filtro("sem_foto", !filtros.sem_foto)}>
             Sem foto <span className="qtd">{num(resumo?.sem_foto)}</span>
           </button>
+          <select aria-label="Gravador" value={filtros.gravador_id} onChange={(e) => filtro("gravador_id", e.target.value)} style={{ maxWidth: 230 }}>
+            <option value="">NVR: todos</option>
+            <optgroup label="NVR Life">{gravadores.filter((g) => g.origem === "life").map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}</optgroup>
+            <optgroup label="NVR externo">{gravadores.filter((g) => g.origem === "cliente").map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}</optgroup>
+          </select>
           <select aria-label="Cidade" value={filtros.cidade} onChange={(e) => filtro("cidade", e.target.value)}>
             <option value="">Cidade: todas</option>
             {cidades.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -233,6 +223,7 @@ export default function Documentacao({ acesso }) {
                 key={sel}
                 cameraId={sel}
                 onEditar={(id) => setModo({ tela: "editar", id })}
+                onSubstituir={(id) => setModo({ tela: "editar", id, substituir: true })}
                 onMudou={(excluida) => { if (excluida) setSel(null); carregar(); carregarResumo(); }}
                 showToast={showToast}
                 confirm={confirm}

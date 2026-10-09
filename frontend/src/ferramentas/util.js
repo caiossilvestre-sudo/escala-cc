@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from "react";
+
 // Utilitários do módulo Ferramentas (LifeGuard · Documentação).
 
 export const TIPO_INFO = {
@@ -23,6 +25,13 @@ export function origemTexto(cam) {
   if (cam.tipo === "lifeguard") return `ID ${cam.lg_id || "—"}${cam.porta_lifeguard ? ` · porta ${cam.porta_lifeguard}` : ""}`;
   const nome = cam.gravador_nome || cam.gravador?.nome || "—";
   return `${nome} · canal ${cam.canal ?? "—"}`;
+}
+
+/** Endereço do NVR pronto para abrir no navegador ("177.1.2.3:4100" -> "http://177.1.2.3:4100"). */
+export function linkNvr(url, padrao = "http") {
+  const u = (url || "").trim().replace(/\s+/g, "");
+  if (!u || !/[.:]/.test(u)) return null;
+  return /^https?:\/\//i.test(u) ? u : `${padrao}://${u}`;
 }
 
 export function dataHora(iso) {
@@ -77,3 +86,24 @@ export function baixarImagem(dataUrl, nomeBase) {
 
 export const vazioParaNull = (obj) =>
   Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, typeof v === "string" && v.trim() === "" ? null : v]));
+
+const TELA_LARGA = 1100; // abaixo disso a lista e a ficha ficam uma embaixo da outra
+
+export const num = (n) => (n === null || n === undefined ? "…" : Number(n).toLocaleString("pt-BR"));
+
+/** Altura do topo da página até o fim da janela: a página não rola, só a lista e a ficha. */
+export function useAlturaRestante() {
+  const ref = useRef(null);
+  const [altura, setAltura] = useState(null);
+  useLayoutEffect(() => {
+    const calcular = () => {
+      if (!ref.current || window.innerWidth <= TELA_LARGA) { setAltura(null); return; }
+      const topo = ref.current.getBoundingClientRect().top + window.scrollY;
+      setAltura(Math.max(480, window.innerHeight - topo));
+    };
+    calcular();
+    window.addEventListener("resize", calcular);
+    return () => window.removeEventListener("resize", calcular);
+  }, []);
+  return [ref, altura];
+}

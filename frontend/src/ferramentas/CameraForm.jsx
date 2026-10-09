@@ -68,16 +68,22 @@ function BuscaCliente({ onEscolher }) {
   );
 }
 
+// Ao substituir a câmera de um canal, estes dados são do equipamento antigo e
+// começam em branco (cliente, gravador, canal e porta pública continuam).
+const CAMPOS_EQUIPAMENTO = ["nome", "descricao_local", "numero_cam", "ip", "porta", "mac", "modelo", "compressao", "firmware", "observacoes"];
+
 /** Cadastro de uma ou várias câmeras do mesmo cliente (cameraId vazio) ou
  * edição de uma câmera. Nenhum campo é obrigatório: ao salvar, a tela lista o
- * que está faltando e pergunta se quer salvar mesmo assim. */
-export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
+ * que está faltando e pergunta se quer salvar mesmo assim.
+ *  - inicial: { gravadorId, canal } para cadastrar direto num canal livre
+ *  - substituir: edição que troca a câmera do canal (dados do equipamento em branco + foto nova) */
+export default function CameraForm({ cameraId, inicial, substituir = false, onVoltar, showToast, confirm }) {
   const editando = !!cameraId;
   const [cliente, setCliente] = useState(CLIENTE_VAZIO);
   const [clienteExistente, setClienteExistente] = useState(null);
   const [tipo, setTipo] = useState("nvr");
-  const [gravadorId, setGravadorId] = useState("");
-  const [linhas, setLinhas] = useState(() => [novaLinha()]);
+  const [gravadorId, setGravadorId] = useState(inicial?.gravadorId || "");
+  const [linhas, setLinhas] = useState(() => [novaLinha(inicial?.canal ? { canal: String(inicial.canal) } : {})]);
   const [gravadores, setGravadores] = useState([]);
   const [canaisUsados, setCanaisUsados] = useState([]);
   const [canalOriginal, setCanalOriginal] = useState(null);
@@ -85,7 +91,7 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    api.get("/ferramentas/gravadores").then(setGravadores).catch((e) => setErro(e.message));
+    api.get("/ferramentas/gravadores?todos=true").then(setGravadores).catch((e) => setErro(e.message));
     if (editando) {
       api.get(`/ferramentas/cameras/${cameraId}`).then((c) => {
         const txt = (v) => (v === null || v === undefined ? "" : String(v));
@@ -93,7 +99,9 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
         setTipo(c.tipo);
         setGravadorId(txt(c.gravador_id));
         setCanalOriginal(c.canal);
-        setLinhas([novaLinha({ ...Object.fromEntries(CAMPOS_LINHA.map((k) => [k, txt(c[k])])), status: c.status || "desconhecido", aberta: true })]);
+        const dados = Object.fromEntries(CAMPOS_LINHA.map((k) => [k, txt(c[k])]));
+        if (substituir) CAMPOS_EQUIPAMENTO.forEach((k) => { dados[k] = ""; });
+        setLinhas([novaLinha({ ...dados, status: substituir ? "desconhecido" : (c.status || "desconhecido"), aberta: true })]);
       }).catch((e) => setErro(e.message));
     }
   }, [cameraId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -193,7 +201,11 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
     try {
       if (editando) {
         await api.patch(`/ferramentas/cameras/${cameraId}`, corpoDaLinha(linhas[0]));
-        showToast("Alterações salvas.");
+        let aviso = "";
+        if (substituir && linhas[0].foto) {
+          try { await api.post(`/ferramentas/cameras/${cameraId}/foto`, { imagem_base64: linhas[0].foto }); } catch (_) { aviso = " — a foto não subiu, importe pela ficha"; }
+        }
+        showToast(`${substituir ? "Câmera do canal substituída" : "Alterações salvas"}${aviso}.`);
         onVoltar(cameraId);
         return;
       }
@@ -223,8 +235,8 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
   return (
     <>
       <TopBar
-        title={editando ? "Editar câmera" : "Cadastrar câmeras"}
-        subtitle={editando ? linhas[0]?.nome : "Uma ou várias câmeras do mesmo cliente"}
+        title={substituir ? `Substituir câmera${linhas[0]?.canal ? ` do canal ${linhas[0].canal}` : ""}` : editando ? "Editar câmera" : "Cadastrar câmeras"}
+        subtitle={substituir ? "O canal continua; os dados e a foto passam a ser da câmera nova" : editando ? linhas[0]?.nome : "Uma ou várias câmeras do mesmo cliente"}
         right={<button className="btn btn-ghost" onClick={() => onVoltar(cameraId || null)}>← Voltar</button>}
       />
       <div className="content">
@@ -261,10 +273,10 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
                 <select value={gravadorId} onChange={(e) => setGravadorId(e.target.value)}>
                   <option value="">Escolha…</option>
                   <optgroup label="NVR Life (instalado na Life)">
-                    {gravadores.filter((g) => g.origem === "life").map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                    {gravadores.filter((g) => g.origem === "life" && (g.ativo || g.id === gravadorId)).map((g) => <option key={g.id} value={g.id}>{g.nome}{g.ativo ? "" : " (desativado)"}</option>)}
                   </optgroup>
                   <optgroup label="NVR externo (instalado no cliente)">
-                    {gravadores.filter((g) => g.origem === "cliente").map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                    {gravadores.filter((g) => g.origem === "cliente" && (g.ativo || g.id === gravadorId)).map((g) => <option key={g.id} value={g.id}>{g.nome}{g.ativo ? "" : " (desativado)"}</option>)}
                   </optgroup>
                 </select>
               </Campo>
@@ -307,12 +319,12 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
                       <Campo label="MAC"><input value={l.mac} onChange={(e) => setLinha(l.key, "mac", e.target.value)} className="mono" /></Campo>
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 20, flexWrap: "wrap" }}>
-                      {!editando && (l.foto ? (
+                      {(!editando || substituir) && (l.foto ? (
                         <img src={l.foto} alt="" style={{ width: 54, height: 34, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }} />
                       ) : null)}
-                      {!editando && (
+                      {(!editando || substituir) && (
                         <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer" }} title="Foto da documentação (opcional)">
-                          {l.foto ? "Trocar foto" : "Foto"}
+                          {l.foto ? "Trocar foto" : substituir ? "Foto da câmera nova" : "Foto"}
                           <input type="file" accept="image/*" onChange={(e) => fotoLinha(l.key, e)} style={{ display: "none" }} />
                         </label>
                       )}
@@ -362,12 +374,13 @@ export default function CameraForm({ cameraId, onVoltar, showToast, confirm }) {
             })}
           </div>
 
-          {editando && <div className="info-box" style={{ marginTop: 12, marginBottom: 0 }}>A foto da documentação é trocada pela ficha da câmera, no botão "Substituir foto".</div>}
+          {editando && !substituir && <div className="info-box" style={{ marginTop: 12, marginBottom: 0 }}>A foto da documentação é trocada pela ficha da câmera, no botão "Substituir foto".</div>}
+          {substituir && <div className="info-box" style={{ marginTop: 12, marginBottom: 0 }}>A câmera antiga sai e a nova entra no mesmo canal. Se não escolher uma foto agora, a foto antiga continua até você importar a nova.</div>}
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", borderTop: "1px solid #EEF0F3", paddingTop: 14, marginTop: 14 }}>
             <button className="btn btn-ghost" onClick={() => onVoltar(cameraId || null)}>Cancelar</button>
             <button className="btn btn-primary" disabled={ocupado} onClick={salvar}>
-              {ocupado ? "Salvando…" : editando ? "Salvar alterações" : `Salvar ${linhas.length} câmera${linhas.length === 1 ? "" : "s"}`}
+              {ocupado ? "Salvando…" : substituir ? "Substituir câmera" : editando ? "Salvar alterações" : `Salvar ${linhas.length} câmera${linhas.length === 1 ? "" : "s"}`}
             </button>
           </div>
         </div>

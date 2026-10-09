@@ -2,7 +2,9 @@
 // Página nova do módulo entra só aqui, sem mexer no App.jsx.
 import { createElement } from "react";
 import Documentacao from "./Documentacao";
+import Gravadores from "./Gravadores";
 
 export const PAGINAS_LIFEGUARD = [
   { id: "lg-documentacao", label: "Documentação", permissao: "doc.ver", render: (acesso) => createElement(Documentacao, { acesso }) },
+  { id: "lg-gravadores", label: "Gravadores", permissao: "nvr.gerenciar", render: (acesso) => createElement(Gravadores, { acesso }) },
 ];

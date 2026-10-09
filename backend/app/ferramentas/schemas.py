@@ -116,6 +116,10 @@ class GravadorIn(BaseModel):
     pppoe: str | None = S(120)
     ip_pppoe: str | None = S(60)
     observacoes: str | None = S(2000)
+    total_canais: int | None = Field(default=None, ge=1, le=512)
+    marca: str | None = S(40)
+    url_https: str | None = S(300)
+    porta_rtsp: str | None = S(20)
 
 
 class GravadorPatch(BaseModel):
@@ -132,6 +136,11 @@ class GravadorPatch(BaseModel):
     pppoe: str | None = S(120)
     ip_pppoe: str | None = S(60)
     observacoes: str | None = S(2000)
+    total_canais: int | None = Field(default=None, ge=1, le=512)
+    marca: str | None = S(40)
+    url_https: str | None = S(300)
+    porta_rtsp: str | None = S(20)
+    ativo: bool | None = None
 
 
 class CredencialIn(BaseModel):

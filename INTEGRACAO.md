@@ -326,3 +326,38 @@ Crie um novo no app, troque no `.env` e reinicie o serviço.
 | POST/PATCH | `/ferramentas/gravadores`; POST/DELETE `/credenciais`; POST `/credenciais/{id}/revelar` (auditado) | doc.senhas |
 | DELETE | `/ferramentas/cameras/{id}` | doc.excluir |
 | GET/POST | `/ferramentas/permissoes` | ft.admin |
+
+
+---
+
+## Gravadores (gerenciamento dos NVRs)
+
+Página **Ferramentas › LifeGuard › Gravadores**, só para quem tem a
+permissão **"Gravadores · incluir, editar, desativar, excluir e liberar
+canais"** (`nvr.gerenciar`). Admin do Escala já tem.
+
+- Grade com todos os canais do NVR (em uso com foto / sem foto / livre).
+  Canal livre → "Cadastrar câmera no canal". Canal em uso → ficha ou
+  "Substituir câmera do canal".
+- Atalhos "Abrir NVR (HTTP)" e "HTTPS" (também na ficha da câmera).
+- Desativar = NVR retirado de operação: some da Documentação, dos filtros
+  e do cadastro, mas câmeras, senhas e fotos continuam no banco.
+- Excluir só funciona para gravador SEM câmeras.
+- "Linhas para captura" baixa um nvrs.txt (sem senhas) para o script.
+
+Colaboradores (doc.editar) editam ou substituem a câmera de um canal, mas
+**não excluem canal de NVR** — liberar canal é só com `nvr.gerenciar`.
+
+### Banco
+
+`backend/app/ferramentas/migracao.py` roda quando o backend sobe e só
+ACRESCENTA colunas em `ft_gravadores` (`ativo`, `total_canais`, `marca`,
+`url_https`, `porta_rtsp`) com `ADD COLUMN IF NOT EXISTS`. Nada é apagado
+ou recriado; todos os gravadores existentes ficam ativos.
+
+Backup antes de atualizar (no servidor):
+
+```bash
+sudo -u postgres pg_dump -Fc NOME_DO_BANCO > ~/backup_escala_$(date +%F).dump
+sudo tar czf ~/backup_fotos_$(date +%F).tgz /var/lib/escala-ferramentas/fotos
+```

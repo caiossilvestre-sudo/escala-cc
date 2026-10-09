@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Pill } from "../components/UI";
-import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, dataHora, kb, baixarImagem, lerArquivo, reduzirImagem } from "./util";
+import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, linkNvr, dataHora, kb, baixarImagem, lerArquivo, reduzirImagem } from "./util";
 
 function Campos({ itens }) {
   const visiveis = itens.filter(([, v]) => v !== null && v !== undefined && v !== "");
@@ -25,7 +25,7 @@ function Linha({ titulo, children }) {
 }
 
 /** Ficha da câmera (painel lateral): foto da documentação, dados e acessos. */
-export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, confirm }) {
+export default function CameraFicha({ cameraId, onEditar, onSubstituir, onMudou, showToast, confirm }) {
   const [cam, setCam] = useState(null);
   const [erro, setErro] = useState("");
   const [foto, setFoto] = useState(null);
@@ -95,7 +95,11 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
   };
 
   const excluir = async () => {
-    if (!(await confirm(`"${cam.nome}" e a foto da documentação serão apagados. Isso não pode ser desfeito.`, { title: "Excluir câmera?", confirmLabel: "Excluir" }))) return;
+    const canal = cam.tipo === "nvr";
+    const msg = canal
+      ? `O canal ${cam.canal ?? ""} fica livre e "${cam.nome}" sai da documentação junto com a foto. Isso não pode ser desfeito. Se a câmera só foi trocada, use "Substituir câmera".`
+      : `"${cam.nome}" e a foto da documentação serão apagados. Isso não pode ser desfeito.`;
+    if (!(await confirm(msg, { title: canal ? "Liberar o canal?" : "Excluir câmera?", confirmLabel: canal ? "Liberar canal" : "Excluir" }))) return;
     try {
       await api.delete(`/ferramentas/cameras/${cam.id}`);
       showToast("Câmera excluída.");
@@ -115,6 +119,12 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
           </div>
           <div className="display ft-ficha-nome">{cam.nome}</div>
           <div className="ft-ficha-sub">{[cam.descricao_local, cam.nome_cliente].filter(Boolean).join(" · ") || "—"}</div>
+          {g && (linkNvr(g.url_acesso) || linkNvr(g.url_https, "https")) && (
+            <div className="ft-nvr-links">
+              {linkNvr(g.url_acesso) && <a href={linkNvr(g.url_acesso)} target="_blank" rel="noopener noreferrer">↗ Abrir NVR</a>}
+              {linkNvr(g.url_https, "https") && <a href={linkNvr(g.url_https, "https")} target="_blank" rel="noopener noreferrer">↗ HTTPS</a>}
+            </div>
+          )}
         </div>
         <div className="ft-ficha-botoes">
           {cam.pode_editar && (
@@ -124,7 +134,8 @@ export default function CameraFicha({ cameraId, onEditar, onMudou, showToast, co
             </label>
           )}
           {cam.pode_editar && <button className="btn btn-ghost btn-sm" onClick={() => onEditar(cam.id)}>Editar</button>}
-          {cam.pode_excluir && <button className="btn btn-danger btn-sm" onClick={excluir}>Excluir</button>}
+          {cam.pode_editar && cam.tipo === "nvr" && onSubstituir && <button className="btn btn-ghost btn-sm" onClick={() => onSubstituir(cam.id)} title="A câmera do canal foi trocada">Substituir câmera</button>}
+          {cam.pode_excluir && <button className="btn btn-danger btn-sm" onClick={excluir}>{cam.tipo === "nvr" ? "Liberar canal" : "Excluir"}</button>}
         </div>
       </div>
 

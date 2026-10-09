@@ -10,7 +10,7 @@ sendo a fonte oficial de clientes; aqui é só a referência para busca).
 from datetime import datetime
 
 from sqlalchemy import (
-    JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
+    JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
 )
 
 from app.db.models import gen_id
@@ -54,6 +54,12 @@ class FtGravador(Base):
     pppoe = Column(String, nullable=True)
     ip_pppoe = Column(String, nullable=True)
     observacoes = Column(Text, nullable=True)
+    # Gerenciamento (colunas novas — entram sozinhas pelo migracao.py)
+    ativo = Column(Boolean, nullable=False, default=True, server_default="true")  # False = retirado de operação
+    total_canais = Column(Integer, nullable=True)   # capacidade do NVR (16, 32, 64, 128...)
+    marca = Column(String, nullable=True)           # intelbras | hikvision | outra
+    url_https = Column(String, nullable=True)       # url_acesso continua sendo o acesso HTTP
+    porta_rtsp = Column(String, nullable=True)      # porta pública que leva à 554 do NVR
     criado_em = Column(DateTime, default=datetime.utcnow)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

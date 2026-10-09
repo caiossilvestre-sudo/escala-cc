@@ -25,9 +25,20 @@ from app.ferramentas.seguranca import (
     PERMISSOES, PRESETS, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
 )
 
-VER, EDITAR, SENHAS, EXCLUIR, ADMIN = (exigir(p) for p in ("doc.ver", "doc.editar", "doc.senhas", "doc.excluir", "ft.admin"))
+VER, EDITAR, SENHAS, EXCLUIR, GERENCIAR, ADMIN = (exigir(p) for p in (
+    "doc.ver", "doc.editar", "doc.senhas", "doc.excluir", "nvr.gerenciar", "ft.admin"))
+
+# Câmera de NVR desativado (retirado de operação) não aparece na Documentação.
+# Os dados continuam no banco; reativando o gravador, tudo volta.
+GRAVADOR_EM_USO = or_(FtGravador.id.is_(None), FtGravador.ativo.isnot(False))
 
 router = APIRouter(prefix="/ferramentas", tags=["ferramentas"])
+
+
+@router.on_event("startup")
+def _migrar_colunas_novas():
+    from app.ferramentas import migracao
+    migracao.aplicar()
 
 
 # ------------------------------------------------------------------ helpers
@@ -112,6 +123,8 @@ def _gravador_dict(g: FtGravador) -> dict:
         "dias_gravacao": g.dias_gravacao, "id_cliente_ixc": g.id_cliente_ixc,
         "nome_cliente": g.nome_cliente, "contrato_ixc": g.contrato_ixc, "cidade": g.cidade,
         "pppoe": g.pppoe, "ip_pppoe": g.ip_pppoe, "observacoes": g.observacoes,
+        "ativo": g.ativo is not False, "total_canais": g.total_canais, "marca": g.marca,
+        "url_https": g.url_https, "porta_rtsp": g.porta_rtsp,
     }
 
 
@@ -126,13 +139,14 @@ def meu_acesso(user: Colaborador = Depends(get_current_colaborador), db: Session
 
 @router.get("/resumo")
 def resumo(db: Session = Depends(get_db), user=Depends(VER)):
-    base = db.query(FtCamera)
+    base = db.query(FtCamera).outerjoin(FtGravador, FtCamera.gravador_id == FtGravador.id).filter(GRAVADOR_EM_USO)
     nvr = base.filter(FtCamera.tipo == "nvr")
     return {
-        "cameras_nvr_life": nvr.join(FtGravador).filter(FtGravador.origem == "life").count(),
-        "cameras_nvr_cliente": nvr.join(FtGravador).filter(FtGravador.origem == "cliente").count(),
+        "cameras_nvr_life": nvr.filter(FtGravador.origem == "life").count(),
+        "cameras_nvr_cliente": nvr.filter(FtGravador.origem == "cliente").count(),
         "cameras_lifeguard": base.filter(FtCamera.tipo == "lifeguard").count(),
-        "gravadores": db.query(FtGravador).count(),
+        "gravadores": db.query(FtGravador).filter(FtGravador.ativo.isnot(False)).count(),
+        "gravadores_desativados": db.query(FtGravador).filter(FtGravador.ativo.is_(False)).count(),
         "sem_foto": base.filter(FtCamera.foto_arquivo.is_(None)).count(),
         "total": base.count(),
     }
@@ -147,12 +161,19 @@ def cidades(db: Session = Depends(get_db), user=Depends(VER)):
 # ---------------------------------------------------------------- gravadores
 
 @router.get("/gravadores")
-def listar_gravadores(origem: str | None = None, db: Session = Depends(get_db), user=Depends(VER)):
+def listar_gravadores(origem: str | None = None, todos: bool = False, db: Session = Depends(get_db), user=Depends(VER)):
+    """Por padrão só os ativos (é o que aparece nos filtros e no cadastro).
+    todos=true traz também os desativados (tela Gravadores)."""
     q = db.query(FtGravador)
     if origem in ("life", "cliente"):
         q = q.filter(FtGravador.origem == origem)
+    if not todos:
+        q = q.filter(FtGravador.ativo.isnot(False))
     contagem = dict(db.query(FtCamera.gravador_id, func.count(FtCamera.id)).group_by(FtCamera.gravador_id).all())
-    return [{**_gravador_dict(g), "qtd_cameras": contagem.get(g.id, 0)} for g in q.order_by(FtGravador.nome).all()]
+    com_foto = dict(db.query(FtCamera.gravador_id, func.count(FtCamera.id))
+                    .filter(FtCamera.foto_arquivo.isnot(None)).group_by(FtCamera.gravador_id).all())
+    return [{**_gravador_dict(g), "qtd_cameras": contagem.get(g.id, 0), "qtd_com_foto": com_foto.get(g.id, 0)}
+            for g in q.order_by(FtGravador.nome).all()]
 
 
 @router.get("/gravadores/{gravador_id}")
@@ -160,14 +181,16 @@ def detalhe_gravador(gravador_id: str, db: Session = Depends(get_db), user=Depen
     g = db.get(FtGravador, gravador_id)
     if not g:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gravador não encontrado.")
-    usados = [c for (c,) in db.query(FtCamera.canal).filter(FtCamera.gravador_id == g.id).order_by(FtCamera.canal).all()]
+    cams = db.query(FtCamera).filter(FtCamera.gravador_id == g.id).order_by(FtCamera.canal).all()
     creds = db.query(FtCredencial).filter(FtCredencial.gravador_id == g.id).order_by(FtCredencial.ordem).all()
-    return {**_gravador_dict(g), "canais_usados": usados,
+    return {**_gravador_dict(g), "canais_usados": [c.canal for c in cams if c.canal],
+            "canais": [{"canal": c.canal, "id": c.id, "nome": c.nome, "descricao_local": c.descricao_local,
+                        "nome_cliente": c.nome_cliente, "tem_foto": bool(c.foto_arquivo)} for c in cams],
             "credenciais": [{"id": c.id, "usuario": c.usuario, "nome_cliente": c.nome_cliente, "tem_senha": bool(c.senha_cifrada)} for c in creds]}
 
 
 @router.post("/gravadores", status_code=201)
-def criar_gravador(body: GravadorIn, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
+def criar_gravador(body: GravadorIn, request: Request, db: Session = Depends(get_db), user=Depends(GERENCIAR)):
     dados = body.model_dump()
     dados["nome"] = nz.texto(dados["nome"]).upper()
     dados["cidade"] = nz.cidade(dados.get("cidade"))
@@ -181,13 +204,20 @@ def criar_gravador(body: GravadorIn, request: Request, db: Session = Depends(get
 
 
 @router.patch("/gravadores/{gravador_id}")
-def editar_gravador(gravador_id: str, body: GravadorPatch, request: Request, db: Session = Depends(get_db), user=Depends(SENHAS)):
+def editar_gravador(gravador_id: str, body: GravadorPatch, request: Request, db: Session = Depends(get_db), user=Depends(GERENCIAR)):
     g = db.get(FtGravador, gravador_id)
     if not g:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gravador não encontrado.")
     dados = body.model_dump(exclude_unset=True)
+    if dados.get("ativo", True) is None:
+        dados.pop("ativo")
     if "nome" in dados and dados["nome"]:
         dados["nome"] = nz.texto(dados["nome"]).upper()
+    if dados.get("total_canais"):
+        maior = db.query(func.max(FtCamera.canal)).filter(FtCamera.gravador_id == g.id).scalar() or 0
+        if dados["total_canais"] < maior:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                f"O canal {maior} já está documentado — o total de canais não pode ser menor que {maior}.")
     if "cidade" in dados:
         dados["cidade"] = nz.cidade(dados["cidade"])
     for k, v in dados.items():
@@ -197,8 +227,30 @@ def editar_gravador(gravador_id: str, body: GravadorPatch, request: Request, db:
     except IntegrityError:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "Já existe um gravador com esse nome.")
-    log_action(db, request, user, "ft_editar_gravador", "ft_gravador", g.id, {"campos": sorted(dados.keys())})
+    acao = "ft_editar_gravador"
+    if set(dados) == {"ativo"}:
+        acao = "ft_reativar_gravador" if dados["ativo"] else "ft_desativar_gravador"
+    log_action(db, request, user, acao, "ft_gravador", g.id, {"nome": g.nome, "campos": sorted(dados.keys())})
     return _gravador_dict(g)
+
+
+@router.delete("/gravadores/{gravador_id}")
+def excluir_gravador(gravador_id: str, request: Request, db: Session = Depends(get_db), user=Depends(GERENCIAR)):
+    """Só apaga gravador SEM câmeras (ex.: cadastrado por engano). Gravador
+    retirado de operação deve ser DESATIVADO — assim nada se perde."""
+    g = db.get(FtGravador, gravador_id)
+    if not g:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gravador não encontrado.")
+    qtd = db.query(FtCamera).filter(FtCamera.gravador_id == g.id).count()
+    if qtd:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"Este gravador tem {qtd} câmera(s) documentada(s). Para tirar de operação, use Desativar.")
+    nome = g.nome
+    db.query(FtCredencial).filter(FtCredencial.gravador_id == g.id).delete()
+    db.delete(g)
+    db.commit()
+    log_action(db, request, user, "ft_excluir_gravador", "ft_gravador", gravador_id, {"nome": nome})
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------ câmeras
@@ -211,6 +263,7 @@ def listar_cameras(
     cidade: str | None = None,
     sem_foto: bool = False,
     gravador_id: str | None = None,
+    desativados: bool = False,
     pagina: int = Query(default=1, ge=1),
     por_pagina: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -229,6 +282,8 @@ def listar_cameras(
         consulta = consulta.filter(FtCamera.foto_arquivo.is_(None))
     if gravador_id:
         consulta = consulta.filter(FtCamera.gravador_id == gravador_id)
+    elif not desativados:
+        consulta = consulta.filter(GRAVADOR_EM_USO)
     if q and q.strip():
         termo = q.strip()
         mac_norm, mac_ok = nz.mac(termo)
@@ -282,7 +337,10 @@ def detalhe_camera(camera_id: str, db: Session = Depends(get_db), user=Depends(V
         "credenciais": [{"id": c.id, "usuario": c.usuario, "de": de, "nome_cliente": c.nome_cliente, "tem_senha": bool(c.senha_cifrada)} for de, c in creds],
         "pode_editar": "doc.editar" in user.ft_permissoes,
         "pode_ver_senhas": "doc.senhas" in user.ft_permissoes,
-        "pode_excluir": "doc.excluir" in user.ft_permissoes,
+        # Canal de NVR nunca é excluído por colaborador: só quem gerencia
+        # gravadores pode liberar o canal. Câmera LifeGuard: doc.excluir.
+        "pode_excluir": ("nvr.gerenciar" if cam.tipo == "nvr" else "doc.excluir") in user.ft_permissoes,
+        "pode_gerenciar_nvr": "nvr.gerenciar" in user.ft_permissoes,
     }
 
 
@@ -376,10 +434,15 @@ def editar_camera(camera_id: str, body: CameraPatch, request: Request, db: Sessi
 
 
 @router.delete("/cameras/{camera_id}")
-def excluir_camera(camera_id: str, request: Request, db: Session = Depends(get_db), user=Depends(EXCLUIR)):
+def excluir_camera(camera_id: str, request: Request, db: Session = Depends(get_db), user=Depends(VER)):
     cam = db.get(FtCamera, camera_id)
     if not cam:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
+    precisa = "nvr.gerenciar" if cam.tipo == "nvr" else "doc.excluir"
+    if precisa not in user.ft_permissoes:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Canal de gravador não pode ser excluído — edite ou substitua a câmera. Só o administrador libera canais."
+                            if cam.tipo == "nvr" else f"Sem permissão para: {PERMISSOES[precisa]}.")
     nome, arquivo = cam.nome, cam.foto_arquivo
     db.query(FtCredencial).filter(FtCredencial.camera_id == cam.id).delete()
     db.delete(cam)
@@ -456,6 +519,8 @@ def exportar_cameras(
         q = q.filter(FtCamera.cidade == cidade)
     if gravador_id:
         q = q.filter(FtCamera.gravador_id == gravador_id)
+    else:
+        q = q.filter(GRAVADOR_EM_USO)
     linhas = q.order_by(FtGravador.nome.is_(None), FtGravador.nome, FtCamera.canal, FtCamera.nome).all()
     return [{
         "id": c.id, "tipo": "lifeguard" if c.tipo == "lifeguard" else f"nvr_{g.origem}" if g else "nvr",

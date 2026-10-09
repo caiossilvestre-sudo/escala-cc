@@ -14,8 +14,9 @@ from app.ferramentas.models import FtAcesso
 PERMISSOES = {
     "doc.ver": "Documentação · consultar e exportar",
     "doc.editar": "Documentação · cadastrar/editar e importar fotos",
-    "doc.senhas": "Documentação · ver senhas e editar gravadores",
-    "doc.excluir": "Documentação · excluir câmeras",
+    "doc.senhas": "Documentação · ver senhas dos gravadores",
+    "doc.excluir": "Documentação · excluir câmeras LifeGuard",
+    "nvr.gerenciar": "Gravadores · incluir, editar, desativar, excluir e liberar canais",
     "ft.admin": "Gerenciar permissões",
 }
 # Atalhos da tela de permissões (só preenchem as caixinhas)
@@ -24,7 +25,7 @@ PRESETS = {
     "n2": ["doc.ver", "doc.editar", "doc.senhas"],
 }
 # Quem tem uma permissão de Documentação precisa conseguir consultar
-IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver"}
+IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver"}
 
 
 def normalizar_permissoes(lista) -> list[str]:
