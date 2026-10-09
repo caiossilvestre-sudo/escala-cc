@@ -37,7 +37,7 @@
 .ft-chip.on .qtd { color: #8A6414; }
 
 .ft-doc-corpo { flex: 1; min-height: 0; display: flex; }
-.ft-doc-lista { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; container-type: inline-size; }
+.ft-doc-lista { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; }
 .ft-doc-ficha { flex: 0 1 min(600px, 44%); min-width: 400px; display: flex; flex-direction: column; border-left: 1px solid var(--border); }
 
 .ft-rolagem { flex: 1; min-height: 0; overflow-y: auto; }
@@ -60,11 +60,12 @@ button.ft-linha:focus-visible { outline: 2px solid var(--primary); outline-offse
 .ft-linha .c-rede { font-size: 11px; }
 .ft-linha .c-rede .l1 { color: #4A5160; }
 .ft-linha .c-rede .l2 { font-size: 11px; color: #8A8F98; }
-@container (max-width: 760px) {
+/* colunas que somem quando a lista fica estreita (menu 236px + ficha ~600px) */
+@media (max-width: 1599px) and (min-width: 1101px), (max-width: 860px) {
   .ft-linha { grid-template-columns: 26px minmax(0, 2fr) minmax(0, 1.6fr) minmax(0, 2fr); }
   .ft-linha .c-rede { display: none; }
 }
-@container (max-width: 560px) {
+@media (max-width: 1400px) and (min-width: 1101px), (max-width: 620px) {
   .ft-linha { grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr); }
   .ft-linha .c-origem { display: none; }
 }

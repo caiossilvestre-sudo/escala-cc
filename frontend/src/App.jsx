@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { useIdleLogout } from "./lib/hooks";
 import { api } from "./api/client";
@@ -143,9 +143,27 @@ function AvisosPopup({ userId }) {
   );
 }
 
+// A aba aberta fica no endereço (ex.: .../#lg-documentacao): atualizar a
+// página (F5) continua na mesma aba, e o "voltar" do navegador também funciona.
+const lerAbaDoEndereco = () => decodeURIComponent(window.location.hash.replace(/^#/, "")) || null;
+
 function Shell() {
   const { user, loading, logout } = useAuth();
-  const [tab, setTab] = useState(null);
+  const [tab, setTabState] = useState(lerAbaDoEndereco);
+  const setTab = useCallback((t) => {
+    if (t) {
+      if (lerAbaDoEndereco() === t) setTabState(t);
+      else window.location.hash = t; // o hashchange abaixo atualiza a aba
+    } else {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      setTabState(null);
+    }
+  }, []);
+  useEffect(() => {
+    const aoMudar = () => setTabState(lerAbaDoEndereco());
+    window.addEventListener("hashchange", aoMudar);
+    return () => window.removeEventListener("hashchange", aoMudar);
+  }, []);
 
   const isAdmin = user?.role === "admin";
   const isViewer = user?.role === "visualizador";
@@ -153,7 +171,14 @@ function Shell() {
   // Visualizador enxerga as mesmas telas do admin — só não consegue submeter nada.
   const showAdminPages = isAdmin || isViewer;
 
-  useEffect(() => { setTab(null); }, [user?.role]);
+  // Só volta para a página inicial quando o perfil muda (sair/entrar com outro
+  // usuário) — não no carregamento da página, para o F5 manter a aba.
+  const perfilAnterior = useRef(undefined);
+  useEffect(() => {
+    const atual = user?.role;
+    if (perfilAnterior.current !== undefined && perfilAnterior.current !== atual) setTab(null);
+    perfilAnterior.current = atual;
+  }, [user?.role, setTab]);
   useIdleLogout(logout, 15 * 60 * 1000, !!user);
   const ft = useFerramentasAcesso(user?.colaborador_id);
 
@@ -163,7 +188,9 @@ function Shell() {
   const navBase = showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
   const nav = navBase;
   const primeiroItem = nav[0]?.itens[0]?.id;
-  const activeTab = tab || (primeiroItem || "dashboard");
+  // Aba do endereço que não existe para este perfil -> página inicial
+  const abaValida = tab && (tab === "senha" || tab.startsWith("lg-") || nav.some((s) => s.itens.some((i) => i.id === tab)));
+  const activeTab = abaValida ? tab : (primeiroItem || "dashboard");
 
   return (
     <div className="app-shell">

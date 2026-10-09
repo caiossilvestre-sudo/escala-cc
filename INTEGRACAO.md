@@ -361,3 +361,9 @@ Backup antes de atualizar (no servidor):
 sudo -u postgres pg_dump -Fc NOME_DO_BANCO > ~/backup_escala_$(date +%F).dump
 sudo tar czf ~/backup_fotos_$(date +%F).tgz /var/lib/escala-ferramentas/fotos
 ```
+
+## Aba no endereço (App.jsx)
+
+A aba aberta fica no endereço (`.../#lg-documentacao`, `.../#ferias`...).
+Atualizar a página (F5) continua na mesma aba e o "voltar" do navegador
+funciona. Ao sair ou trocar de usuário, volta para a página inicial.
