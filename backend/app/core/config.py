@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from_email: str = ""
-    smtp_from_nome: str = "Suporte Técnico - Sistemas"
+    smtp_from_nome: str = "Suporte Técnico"
 
     # Teams via Power Automate (opcional). Aqui o Power Automate é quem
     # busca os avisos pendentes periodicamente (não o contrário) — evita
