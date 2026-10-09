@@ -25,10 +25,10 @@ export default function Login() {
     <div className="login-wrap">
       <form onSubmit={submit} className="login-card">
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, var(--primary), #F0A268)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "white" }}>EC</div>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, var(--primary), #F0A268)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "white" }}>ST</div>
           <div>
-            <div className="display" style={{ fontWeight: 600, fontSize: 15 }}>Escala Suporte Técnico</div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sistema de escalas</div>
+            <div className="display" style={{ fontWeight: 600, fontSize: 15 }}>Suporte Técnico</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Sistemas</div>
           </div>
         </div>
 

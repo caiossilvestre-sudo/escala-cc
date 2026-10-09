@@ -198,7 +198,7 @@ function Shell() {
       <aside className="sidebar">
         <div className="sidebar-logo">
           <div className="mark">ST</div>
-          <div><div className="name display">Suporte Técnico - Sistemas</div><div className="sub">Escalas, ferramentas e documentação</div></div>
+          <div><div className="name display">Suporte Técnico</div><div className="sub">Sistemas</div></div>
         </div>
         <div className="sidebar-user">
           <div className="name">{user.nome}</div>
