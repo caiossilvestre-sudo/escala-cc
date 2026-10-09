@@ -9,7 +9,7 @@ function Campos({ itens }) {
   return (
     <dl className="ft-dl">
       {visiveis.map(([k, v, mono, largo]) => (
-        <div key={k} className={largo ? "largo" : ""}><dt>{k}</dt><dd className={mono ? "mono" : ""}>{String(v)}</dd></div>
+        <div key={k} className={largo ? "largo" : ""}><dt>{k}</dt><dd className={mono ? "mono" : ""}>{typeof v === "object" ? v : String(v)}</dd></div>
       ))}
     </dl>
   );
@@ -119,12 +119,6 @@ export default function CameraFicha({ cameraId, onEditar, onSubstituir, onMudou,
           </div>
           <div className="display ft-ficha-nome">{cam.nome}</div>
           <div className="ft-ficha-sub">{[cam.descricao_local, cam.nome_cliente].filter(Boolean).join(" · ") || "—"}</div>
-          {g && (linkNvr(g.url_acesso) || linkNvr(g.url_https, "https")) && (
-            <div className="ft-nvr-links">
-              {linkNvr(g.url_acesso) && <a href={linkNvr(g.url_acesso)} target="_blank" rel="noopener noreferrer">↗ Abrir NVR</a>}
-              {linkNvr(g.url_https, "https") && <a href={linkNvr(g.url_https, "https")} target="_blank" rel="noopener noreferrer">↗ HTTPS</a>}
-            </div>
-          )}
         </div>
         <div className="ft-ficha-botoes">
           {cam.pode_editar && (
@@ -161,7 +155,7 @@ export default function CameraFicha({ cameraId, onEditar, onSubstituir, onMudou,
             </Linha>
           ) : (
             <Linha titulo="Gravador">
-              <Campos itens={[["Gravador", g?.nome], ["Canal", cam.canal, true], ["Instalado", g?.origem === "cliente" ? "No cliente (NVR externo)" : "Na Life (NVR Life)"], ["Acesso ao NVR", g?.url_acesso, true, true], ["Nº câmera", cam.numero_cam, true], ["Porta de serviço", g?.porta_servico, true], ["Porta pública", cam.porta_publica, true], ["Dias de gravação", (cam.dias_gravacao || g?.dias_gravacao) && `${cam.dias_gravacao || g?.dias_gravacao} dias`]]} />
+              <Campos itens={[["Gravador", g?.nome], ["Canal", cam.canal, true], ["Instalado", g?.origem === "cliente" ? "No cliente (NVR externo)" : "Na Life (NVR Life)"], ["Acesso ao NVR", linkNvr(g?.url_acesso) && <a className="ft-acessar" href={linkNvr(g.url_acesso)} target="_blank" rel="noopener noreferrer" title={linkNvr(g.url_acesso)}>Acessar ↗</a>], ["Acesso HTTPS", linkNvr(g?.url_https, "https") && <a className="ft-acessar" href={linkNvr(g.url_https, "https")} target="_blank" rel="noopener noreferrer" title={linkNvr(g.url_https, "https")}>Acessar ↗</a>], ["Nº câmera", cam.numero_cam, true], ["Porta de serviço", g?.porta_servico, true], ["Porta pública", cam.porta_publica, true], ["Dias de gravação", (cam.dias_gravacao || g?.dias_gravacao) && `${cam.dias_gravacao || g?.dias_gravacao} dias`]]} />
             </Linha>
           )}
           <Linha titulo="Cliente">

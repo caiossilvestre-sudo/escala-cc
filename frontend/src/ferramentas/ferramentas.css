@@ -187,3 +187,20 @@ button.ft-linha:focus-visible { outline: 2px solid var(--primary); outline-offse
 @media (max-width: 1100px) {
   .ft-grav-lista { flex: none; height: 45vh; border-right: 0; border-bottom: 1px solid var(--border); }
 }
+
+.ft-acessar { display: inline-block; margin-top: 2px; padding: 3px 12px; border-radius: 6px; background: var(--primary); color: #fff !important; font-size: 12px; font-weight: 600; text-decoration: none; }
+.ft-acessar:hover { background: var(--primary-ink); }
+
+/* ---------- Menu lateral mais compacto (vale para o menu todo do Escala) ----------
+   Seletores com .app-shell na frente para valer por cima do styles.css. */
+@media (min-width: 861px) {
+  .app-shell .sidebar-logo { padding-bottom: 12px; }
+  .app-shell .sidebar-user { margin-bottom: 6px; padding: 8px 12px; }
+  .app-shell .nav { gap: 0; }
+  .app-shell .nav-group { margin-bottom: 2px; }
+  .app-shell .nav-group-label { padding: 8px 10px 2px; }
+  .app-shell .nav button { padding: 6px 10px; }
+  .app-shell .ft-menu-filhos { gap: 1px; margin-top: 1px; }
+  .app-shell .nav-footnote { padding: 8px; }
+  .app-shell .sidebar-footer button { padding: 6px 10px; }
+}
