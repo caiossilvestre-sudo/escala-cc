@@ -35,7 +35,9 @@ class TokenOut(BaseModel):
 
 # "visualizador" enxerga tudo (igual admin), mas nenhuma rota de escrita
 # aceita esse papel. "supervisor" edita, mas só dentro do próprio setor.
-RoleType = Literal["admin", "colaborador", "visualizador", "supervisor"]
+# "ferramentas" só acessa o módulo Ferramentas (LifeGuard), nas páginas liberadas
+# para ela em Permissões — nenhuma tela/rota da escala.
+RoleType = Literal["admin", "colaborador", "visualizador", "supervisor", "ferramentas"]
 
 
 class ColaboradorIn(BaseModel):

@@ -128,7 +128,7 @@ function Gerar12x36Section({ colaboradores, onGerado, showToast }) {
 function SugestaoManual({ colaboradores, plantoes, ferias, atestados, solicitacoes, onAtribuido, showToast, equipeOptions }) {
   const [criterio, setCriterio] = useState({ equipe: equipeOptions[0] || EQUIPES[0], data: todayISO(), horario_inicio: "08:00", horario_fim: "16:00", tipo: "Plantão manual" });
   const [buscou, setBuscou] = useState(false);
-  const candidatos = colaboradores.filter((c) => c.role !== "admin");
+  const candidatos = colaboradores.filter((c) => c.role !== "admin" && c.role !== "ferramentas");
 
   const resultados = candidatos.map((c) => ({ colaborador: c, ...checarElegibilidade(c, criterio, plantoes, ferias, atestados, solicitacoes) }));
   const elegiveis = ordenarPorJustica(resultados.filter((r) => r.elegivel), plantoes, criterio.data);
@@ -182,7 +182,7 @@ function NovoPlantaoManualForm({ colaboradores, onCriado, showToast }) {
   const [linhas, setLinhas] = useState([{ colaborador_id: "", horario_inicio: "", horario_fim: "", tipo: "" }]);
   const [enviando, setEnviando] = useState(false);
 
-  const candidatos = colaboradores.filter((c) => c.role !== "admin");
+  const candidatos = colaboradores.filter((c) => c.role !== "admin" && c.role !== "ferramentas");
   const setoresDisponiveis = Array.from(new Set(candidatos.map((c) => c.equipe))).filter(Boolean);
   const candidatosFiltrados = setorFiltro === "Todos" ? candidatos : candidatos.filter((c) => c.equipe === setorFiltro);
 
@@ -298,7 +298,7 @@ export default function Plantoes() {
                     <tr key={p.id}>
                       <td>{p.sugerido ? (
                         <select value={p.colaborador_id} onChange={(e) => reatribuir(p.id, e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 12 }}>
-                          {colaboradores.data.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                          {colaboradores.data.filter((c) => c.role !== "admin" && c.role !== "ferramentas").map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                         </select>
                       ) : nome(p.colaborador_id)}</td>
                       <td className="mono">{formatBRDia(p.data)}</td><td className="mono">{p.horario_inicio}–{p.horario_fim}</td><td>{p.tipo || "—"}</td>

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -14,6 +14,7 @@ from app.api import (
     routes_configuracoes, routes_feriados, routes_ferias, routes_plantoes, routes_solicitacoes,
 )
 from app.core.config import settings
+from app.core.deps import bloquear_somente_ferramentas
 from app.core.rate_limit import limiter
 from app.core.security import hash_password
 from app.db.models import Colaborador
@@ -35,15 +36,18 @@ app.add_middleware(
 )
 
 app.include_router(routes_auth.router)
-app.include_router(routes_colaboradores.router)
-app.include_router(routes_plantoes.router)
-app.include_router(routes_plantoes.templates_router)
-app.include_router(routes_solicitacoes.router)
-app.include_router(routes_atestados.router)
-app.include_router(routes_ferias.router)
-app.include_router(routes_feriados.router)
+# Rotas da escala: o perfil "ferramentas" é barrado em todas (avisos fica de fora
+# porque tem rota com chave de API, usada pelo Power Automate, sem login).
+_so_escala = [Depends(bloquear_somente_ferramentas)]
+app.include_router(routes_colaboradores.router, dependencies=_so_escala)
+app.include_router(routes_plantoes.router, dependencies=_so_escala)
+app.include_router(routes_plantoes.templates_router, dependencies=_so_escala)
+app.include_router(routes_solicitacoes.router, dependencies=_so_escala)
+app.include_router(routes_atestados.router, dependencies=_so_escala)
+app.include_router(routes_ferias.router, dependencies=_so_escala)
+app.include_router(routes_feriados.router, dependencies=_so_escala)
 app.include_router(routes_avisos.router)
-app.include_router(routes_configuracoes.router)
+app.include_router(routes_configuracoes.router, dependencies=_so_escala)
 app.include_router(ferramentas_router)  # módulo Ferramentas (LifeGuard · Documentação)
 
 

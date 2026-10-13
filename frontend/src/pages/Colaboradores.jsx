@@ -67,6 +67,9 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
       {!souSupervisor && form.role === "visualizador" && (
         <div className="info-box">Perfil "Visualizador": enxerga todas as telas de administração, mas não consegue cadastrar, editar, aprovar ou excluir nada — acesso só de leitura.</div>
       )}
+      {!souSupervisor && form.role === "ferramentas" && (
+        <div className="info-box">Perfil "Somente Ferramentas": não vê nem altera nada da escala (cronograma, plantões, folgas, férias...). Só entra nas Ferramentas, e apenas nas páginas/ações que você liberar em Ferramentas › Permissões. Use um setor próprio (ex: "Ferramentas") para a pessoa não aparecer nos setores da escala.</div>
+      )}
       {!souSupervisor && form.role === "supervisor" && (
         <div className="info-box">Perfil "Supervisor": gerencia colaboradores, plantões, folgas/férias e atestados — mas só dos setores marcados abaixo em "Setores gerenciados". Pode gerenciar mais de um setor. Não consegue alterar perfil de acesso de ninguém nem mexer em feriados — isso continua exclusivo do administrador.</div>
       )}
@@ -79,6 +82,7 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
               <option value="colaborador">Colaborador</option>
               <option value="supervisor">Supervisor (gerencia setor(es) próprios)</option>
               <option value="visualizador">Visualizador (só leitura)</option>
+              <option value="ferramentas">Somente Ferramentas (sem acesso à escala)</option>
               <option value="admin">Administrador</option>
             </select>
           </div>
@@ -152,6 +156,7 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
               <option value="colaborador">Colaborador</option>
               <option value="supervisor">Supervisor (gerencia setor(es) próprios)</option>
               <option value="visualizador">Visualizador (só leitura)</option>
+              <option value="ferramentas">Somente Ferramentas (sem acesso à escala)</option>
               <option value="admin">Administrador</option>
             </select>
           </div>
@@ -282,7 +287,7 @@ export default function Colaboradores({ user }) {
     .slice()
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
 
-  const ROLE_PILL_LABEL = { admin: "Admin", visualizador: "Visualizador", supervisor: "Supervisor" };
+  const ROLE_PILL_LABEL = { admin: "Admin", visualizador: "Visualizador", supervisor: "Supervisor", ferramentas: "Só Ferramentas" };
 
   const estaBloqueado = (c) => c.locked_until && new Date(c.locked_until + "Z") > new Date();
 
@@ -334,7 +339,7 @@ export default function Colaboradores({ user }) {
                         <span className="mono" style={{ color: "var(--text-muted)" }}>{c.escala_tipo} · {c.horario_inicio}–{c.horario_fim}</span>
                         {c.status === "inativo" && <Pill status="rejeitada">Desligado{c.data_desligamento ? ` em ${c.data_desligamento}` : ""}</Pill>}
                         {estaBloqueado(c) && <Pill status="rejeitada">🔒 Bloqueado até {new Date(c.locked_until + "Z").toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</Pill>}
-                        {(c.role === "admin" || c.role === "visualizador" || c.role === "supervisor") && <Pill status="aprovada">{ROLE_PILL_LABEL[c.role]}{c.role === "supervisor" && c.equipes_gerenciadas?.length > 1 ? ` (${c.equipes_gerenciadas.length} setores)` : ""}</Pill>}
+                        {(c.role === "admin" || c.role === "visualizador" || c.role === "supervisor" || c.role === "ferramentas") && <Pill status="aprovada">{ROLE_PILL_LABEL[c.role]}{c.role === "supervisor" && c.equipes_gerenciadas?.length > 1 ? ` (${c.equipes_gerenciadas.length} setores)` : ""}</Pill>}
                         {c.escala_tipo === "12x36" && c.ciclo_12x36_inicio && <Pill status="plantao">Ciclo 12x36 desde {c.ciclo_12x36_inicio}</Pill>}
                       </div>
                     </div>

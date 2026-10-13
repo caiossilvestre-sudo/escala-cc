@@ -23,6 +23,7 @@ PERMISSOES = {
 PRESETS = {
     "n1": ["doc.ver", "doc.editar"],
     "n2": ["doc.ver", "doc.editar", "doc.senhas"],
+    "leitura": ["doc.ver"],
 }
 # Quem tem uma permissão de Documentação precisa conseguir consultar
 IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver"}

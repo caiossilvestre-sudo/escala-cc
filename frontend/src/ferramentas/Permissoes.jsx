@@ -65,7 +65,7 @@ export default function Permissoes({ onVoltar, showToast }) {
       <TopBar title="Ferramentas · Permissões" subtitle="Acesso por página/tópico do LifeGuard — independe do perfil na escala" right={<button className="btn btn-ghost" onClick={onVoltar}>← Voltar</button>} />
       <div className="content">
         <ErrorBox error={erro} />
-        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos N1 e N2 só preenchem as caixinhas — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
+        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1 e N2 só preenchem as caixinhas — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
         <div className="card">
           <div className="ft-filtros" style={{ marginBottom: 12 }}>
             <input type="search" placeholder="Filtrar por nome ou setor" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
@@ -90,6 +90,7 @@ export default function Permissoes({ onVoltar, showToast }) {
                     <td>
                       {!p.fixo && (
                         <div style={{ display: "flex", gap: 4 }}>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, dados.presets.leitura)} title="Só consultar/exportar a Documentação — sem editar nada">Leitura</button>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, dados.presets.n1)}>N1</button>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, dados.presets.n2)}>N2</button>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, [])} title="Remover todo o acesso">Nenhum</button>

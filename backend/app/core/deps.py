@@ -24,6 +24,14 @@ def get_current_colaborador(
     return user
 
 
+def bloquear_somente_ferramentas(user: Colaborador = Depends(get_current_colaborador)) -> Colaborador:
+    """Perfil "ferramentas" não tem nenhum acesso às rotas da escala (cronograma,
+    plantões, folgas, férias, atestados...). Aplicada nos routers em main.py."""
+    if user.role == "ferramentas":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Seu perfil tem acesso apenas ao módulo Ferramentas.")
+    return user
+
+
 def require_admin(user: Colaborador = Depends(get_current_colaborador)) -> Colaborador:
     if user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Ação restrita a administradores.")

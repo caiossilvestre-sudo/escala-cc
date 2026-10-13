@@ -114,9 +114,9 @@ export default function CronogramaAdmin() {
         <ErrorBox error={error} />
         {loading ? <Spinner /> : (
           <>
-            {showForm && <NovaAusenciaForm colaboradores={colaboradores.data.filter((c) => c.role !== "admin")} onSubmit={registrarAusencia} onCancel={() => setShowForm(false)} />}
+            {showForm && <NovaAusenciaForm colaboradores={colaboradores.data.filter((c) => c.role !== "admin" && c.role !== "ferramentas")} onSubmit={registrarAusencia} onCancel={() => setShowForm(false)} />}
             <CronogramaGrid
-              colaboradores={colaboradores.data.filter((c) => c.role !== "admin")} plantoes={plantoes.data} solicitacoes={solicitacoes.data}
+              colaboradores={colaboradores.data.filter((c) => c.role !== "admin" && c.role !== "ferramentas")} plantoes={plantoes.data} solicitacoes={solicitacoes.data}
               atestados={atestados.data} ferias={ferias.data} feriados={feriados.data}
               mesFiltro={mes} setMesFiltro={setMes} equipeFiltro={equipe} setEquipeFiltro={setEquipe}
               equipesOptions={equipesOperacionais} showEquipeSelector
