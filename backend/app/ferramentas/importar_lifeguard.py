@@ -10,6 +10,7 @@ por TAB) — também aceita CSV com ; ou ,. A primeira linha são os títulos:
   Cliente | Contrato | ID Cliente | Cidade | PPPOE | IP PPPOE | Nome | Local |
   IP CAMERA | PORTA TCP INTERNA (CAM) | PORTA LifeGUARD | ID LIFEGUARD |
   PORTA EXTERNA ... RTSP | LOGIN ONU BRIDGE | IP LOGIN BRIDGE
+  (opcionais: Gravação (dias) | Situação = online/offline)
 
 As três últimas vão para Observações. A câmera é identificada pelo ID
 LIFEGUARD: se já existe, os dados são ATUALIZADOS (a foto não é tocada);
@@ -50,6 +51,8 @@ REGRAS = [
     ("cidade", "cidade"),
     ("nome", "nome"),
     ("local", "descricao_local"),
+    ("gravacao", "dias_gravacao"),
+    ("situacao", "status"),
 ]
 CAMPOS = ["nome_cliente", "contrato_ixc", "id_cliente_ixc", "cidade", "pppoe", "ip_pppoe",
           "nome", "descricao_local", "ip", "porta", "porta_lifeguard"]
@@ -109,6 +112,12 @@ def montar(d: dict) -> tuple[dict, list[str]]:
     if d.get("obs_ip_bridge"):
         obs.append(f"IP login bridge: {d['obs_ip_bridge'].strip()}")
     dados["observacoes"] = "\n".join(obs) or None
+    dias = nz.inteiro(d.get("dias_gravacao"))
+    if dias:
+        dados["dias_gravacao"] = dias
+    st = (d.get("status") or "").strip().lower()
+    if st in ("online", "offline"):
+        dados["status"] = st
     return dados, avisos
 
 
