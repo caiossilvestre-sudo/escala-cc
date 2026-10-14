@@ -45,7 +45,9 @@ async function request(path, { method = "GET", body, retry = true } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (res.status === 401 && retry) {
+  // No próprio login, 401 significa "e-mail ou senha inválidos" (mensagem vinda do
+  // backend) — não é sessão expirada, então não tenta renovar nem troca a mensagem.
+  if (res.status === 401 && retry && path !== "/auth/login") {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       return request(path, { method, body, retry: false });
