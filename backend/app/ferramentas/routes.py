@@ -43,6 +43,20 @@ def _migrar_colunas_novas():
 
 # ------------------------------------------------------------------ helpers
 
+_COM_ACENTO = "áàâãäéèêëíìîïóòôõöúùûüçñ"
+_SEM_ACENTO = "aaaaaeeeeiiiiooooouuuucn"
+
+
+def _tirar_acento(s: str) -> str:
+    return s.lower().translate(str.maketrans(_COM_ACENTO, _SEM_ACENTO))
+
+
+def _sem_acento_sql(db: Session, col):
+    """lower() + troca das letras acentuadas, direto no banco (Postgres)."""
+    if db.get_bind().dialect.name == "postgresql":
+        return func.translate(func.lower(col), _COM_ACENTO, _SEM_ACENTO)
+    return func.lower(col)  # sqlite (testes locais): só ignora maiúsculas
+
 def _limpar_camera(dados: dict) -> dict:
     """Padroniza os campos antes de gravar (mesmas regras da importação)."""
     for campo in list(dados.keys()):
@@ -287,17 +301,23 @@ def listar_cameras(
     if q and q.strip():
         termo = q.strip()
         mac_norm, mac_ok = nz.mac(termo)
-        padrao = f"%{termo}%"
-        condicoes = [
-            FtCamera.nome.ilike(padrao), FtCamera.descricao_local.ilike(padrao),
-            FtCamera.nome_cliente.ilike(padrao), FtCamera.contrato_ixc.ilike(padrao),
-            FtCamera.id_cliente_ixc.ilike(padrao), FtCamera.ip.ilike(padrao),
-            FtCamera.mac.ilike(padrao), FtCamera.lg_id.ilike(padrao), FtCamera.pppoe.ilike(padrao),
-            FtCamera.cidade.ilike(padrao), FtGravador.nome.ilike(padrao),
-        ]
         if mac_ok and mac_norm and len(termo.replace(":", "").replace("-", "").replace(".", "")) == 12:
-            condicoes.append(FtCamera.mac == mac_norm)
-        consulta = consulta.filter(or_(*condicoes))
+            consulta = consulta.filter(FtCamera.mac == mac_norm)
+        else:
+            # Cada palavra precisa aparecer em algum campo ("sale entrada 09").
+            # Textos sem diferença de maiúscula/minúscula e com/sem acento.
+            for palavra in termo.split()[:8]:
+                padrao = f"%{palavra}%"
+                sem_acento = f"%{_tirar_acento(palavra)}%"
+                def texto(col):
+                    return _sem_acento_sql(db, col).like(sem_acento)
+                consulta = consulta.filter(or_(
+                    texto(FtCamera.nome), texto(FtCamera.descricao_local),
+                    texto(FtCamera.nome_cliente), FtCamera.contrato_ixc.ilike(padrao),
+                    FtCamera.id_cliente_ixc.ilike(padrao), FtCamera.ip.ilike(padrao),
+                    FtCamera.mac.ilike(padrao), FtCamera.lg_id.ilike(padrao), FtCamera.pppoe.ilike(padrao),
+                    FtCamera.ip_pppoe.ilike(padrao), texto(FtCamera.cidade), texto(FtGravador.nome),
+                ))
 
     total = consulta.count()
     linhas = (consulta.order_by(FtGravador.nome.is_(None), FtGravador.nome, FtCamera.canal, FtCamera.nome)
