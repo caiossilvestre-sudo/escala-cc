@@ -111,6 +111,18 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
         if outros_admins == 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Não é possível rebaixar o único administrador ativo do sistema.")
 
+    if body.intervalo_inicio is not None or body.intervalo_fim is not None:
+        ini = body.intervalo_inicio if body.intervalo_inicio is not None else (alvo.intervalo_inicio or "")
+        fim = body.intervalo_fim if body.intervalo_fim is not None else (alvo.intervalo_fim or "")
+        if bool(ini) != bool(fim):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Informe o início e o fim do intervalo (ou deixe os dois vazios).")
+        if ini:
+            for h in (ini, fim):
+                if int(h[:2]) > 23 or int(h[3:]) > 59:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Horário de intervalo inválido ({h}).")
+            if ini == fim:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "O fim do intervalo não pode ser igual ao início.")
+
     equipe_mudou = body.equipe is not None and body.equipe != alvo.equipe
     turno_mudou = body.turno is not None and body.turno != alvo.turno
 
@@ -138,6 +150,10 @@ def atualizar(colaborador_id: str, body: ColaboradorUpdateIn, request: Request, 
         alvo.horario_inicio = body.horario_inicio
     if body.horario_fim is not None:
         alvo.horario_fim = body.horario_fim
+    if body.intervalo_inicio is not None:
+        alvo.intervalo_inicio = body.intervalo_inicio or None
+    if body.intervalo_fim is not None:
+        alvo.intervalo_fim = body.intervalo_fim or None
     if body.data_admissao is not None:
         alvo.data_admissao = body.data_admissao
     if body.data_aniversario is not None:

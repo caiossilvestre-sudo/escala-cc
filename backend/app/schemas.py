@@ -101,6 +101,9 @@ class ColaboradorUpdateIn(BaseModel):
     data_admissao: Optional[date] = None
     data_aniversario: Optional[date] = None
     ciclo_12x36_inicio: Optional[date] = None
+    # "" (vazio) remove o intervalo; None = não mexe
+    intervalo_inicio: Optional[str] = Field(default=None, pattern=r"^(\d{2}:\d{2})?$")
+    intervalo_fim: Optional[str] = Field(default=None, pattern=r"^(\d{2}:\d{2})?$")
     motivo: str = Field(min_length=3, max_length=300)
 
 

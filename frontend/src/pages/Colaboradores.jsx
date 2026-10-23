@@ -128,6 +128,7 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
     horario_inicio: colaborador.horario_inicio, horario_fim: colaborador.horario_fim,
     data_admissao: colaborador.data_admissao || "", data_aniversario: colaborador.data_aniversario || "",
     ciclo_12x36_inicio: colaborador.ciclo_12x36_inicio || "",
+    intervalo_inicio: colaborador.intervalo_inicio || "", intervalo_fim: colaborador.intervalo_fim || "",
     motivo: "",
   });
   const [busy, setBusy] = useState(false);
@@ -135,6 +136,7 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
 
   const submit = async () => {
     if (!form.motivo.trim()) { showToast("Informe o motivo da alteração."); return; }
+    if (!!form.intervalo_inicio !== !!form.intervalo_fim) { showToast("Preencha o início e o fim do intervalo (ou limpe os dois)."); return; }
     setBusy(true);
     try {
       const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null, ciclo_12x36_inicio: form.ciclo_12x36_inicio || null };
@@ -173,6 +175,8 @@ function EditarColaboradorRow({ colaborador, onDone, showToast, equipeOptions, e
         <div className="field"><label>Escala</label><EditableSelect value={form.escala_tipo} onChange={(v) => setForm({ ...form, escala_tipo: v })} options={escalaOptions} /></div>
         <div className="field"><label>Início</label><input type="time" value={form.horario_inicio} onChange={(e) => setForm({ ...form, horario_inicio: e.target.value })} /></div>
         <div className="field"><label>Fim</label><input type="time" value={form.horario_fim} onChange={(e) => setForm({ ...form, horario_fim: e.target.value })} /></div>
+        <div className="field"><label>Intervalo — início</label><input type="time" value={form.intervalo_inicio} onChange={(e) => setForm({ ...form, intervalo_inicio: e.target.value })} /></div>
+        <div className="field"><label>Intervalo — fim</label><input type="time" value={form.intervalo_fim} onChange={(e) => setForm({ ...form, intervalo_fim: e.target.value })} /></div>
         <div className="field"><label>Admissão (opcional)</label><input type="date" value={form.data_admissao} onChange={(e) => setForm({ ...form, data_admissao: e.target.value })} /></div>
         <div className="field"><label>Aniversário (opcional)</label><input type="date" value={form.data_aniversario} onChange={(e) => setForm({ ...form, data_aniversario: e.target.value })} /></div>
         {ehMonitoramento12x36 && (
