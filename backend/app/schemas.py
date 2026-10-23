@@ -51,6 +51,8 @@ class ColaboradorIn(BaseModel):
     horario_inicio: str = Field(pattern=r"^\d{2}:\d{2}$")
     horario_fim: str = Field(pattern=r"^\d{2}:\d{2}$")
     senha_inicial: str = Field(min_length=10, max_length=200)
+    intervalo_inicio: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    intervalo_fim: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     data_admissao: Optional[date] = None
     data_aniversario: Optional[date] = None
     ciclo_12x36_inicio: Optional[date] = None
@@ -67,6 +69,8 @@ class ColaboradorOut(BaseModel):
     escala_tipo: str
     horario_inicio: str
     horario_fim: str
+    intervalo_inicio: Optional[str] = None
+    intervalo_fim: Optional[str] = None
     status: str
     data_desligamento: Optional[date] = None
     data_admissao: Optional[date] = None
@@ -98,6 +102,17 @@ class ColaboradorUpdateIn(BaseModel):
     data_aniversario: Optional[date] = None
     ciclo_12x36_inicio: Optional[date] = None
     motivo: str = Field(min_length=3, max_length=300)
+
+
+class IntervaloItemIn(BaseModel):
+    colaborador_id: str
+    # os dois vazios = remove o intervalo cadastrado
+    intervalo_inicio: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    intervalo_fim: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+
+
+class IntervalosIn(BaseModel):
+    itens: list[IntervaloItemIn] = Field(min_length=1, max_length=500)
 
 
 class DesligarIn(BaseModel):

@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import RelatorioEquipe from "./pages/RelatorioEquipe";
 import CronogramaAdmin from "./pages/CronogramaAdmin";
 import Colaboradores from "./pages/Colaboradores";
+import Intervalos from "./pages/Intervalos";
 import Plantoes from "./pages/Plantoes";
 import Feriados from "./pages/Feriados";
 import Aprovacoes from "./pages/Aprovacoes";
@@ -34,7 +35,7 @@ const NAV_ADMIN = [
     { id: "ferias", label: "Férias" },
     { id: "atestados", label: "Atestados" },
   ] },
-  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
+  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }, { id: "intervalos", label: "Intervalos" }] },
   { grupo: "Comunicação", itens: [{ id: "avisos", label: "Avisos" }] },
 ];
 // Supervisor: só o operacional do próprio setor. Sem Feriados (política da
@@ -57,7 +58,7 @@ const NAV_SUPERVISOR = [
     { id: "ferias", label: "Férias" },
     { id: "atestados", label: "Atestados" },
   ] },
-  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
+  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }, { id: "intervalos", label: "Intervalos" }] },
   { grupo: "Minhas solicitações", itens: [
     { id: "solicitar-folga", label: "Solicitar folga" },
     { id: "minhas-ferias", label: "Minhas férias" },
@@ -247,6 +248,7 @@ function Shell() {
           {activeTab === "relatorio" && (showAdminPages || isSupervisor) && <RelatorioEquipe />}
           {activeTab === "cronograma" && (showAdminPages || isSupervisor) && <CronogramaAdmin />}
           {activeTab === "colaboradores" && (showAdminPages || isSupervisor) && <Colaboradores user={user} />}
+          {activeTab === "intervalos" && (showAdminPages || isSupervisor) && <Intervalos user={user} />}
           {activeTab === "plantoes" && (showAdminPages || isSupervisor) && <Plantoes />}
           {activeTab === "feriados" && showAdminPages && <Feriados />}
           {activeTab === "aprovacoes" && (showAdminPages || isSupervisor) && <Aprovacoes />}

@@ -27,7 +27,7 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
     nome: "", email: "", role: "colaborador", equipe: equipeInicial, equipes_gerenciadas: [],
     turno: turnoOptions[0] || TURNOS[0], escala_tipo: escalaOptions[0] || ESCALAS[0],
     horario_inicio: "08:00", horario_fim: "17:00", senha_inicial: "", data_admissao: "", data_aniversario: "",
-    ciclo_12x36_inicio: "",
+    ciclo_12x36_inicio: "", intervalo_inicio: "", intervalo_fim: "",
   });
   const [busy, setBusy] = useState(false);
 
@@ -40,11 +40,12 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
     }
     setBusy(true);
     try {
-      const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null, ciclo_12x36_inicio: form.ciclo_12x36_inicio || null };
+      const payload = { ...form, data_admissao: form.data_admissao || null, data_aniversario: form.data_aniversario || null, ciclo_12x36_inicio: form.ciclo_12x36_inicio || null, intervalo_inicio: form.intervalo_inicio || null, intervalo_fim: form.intervalo_fim || null };
+      if (!!form.intervalo_inicio !== !!form.intervalo_fim) { showToast("Preencha o início e o fim do intervalo (ou deixe os dois vazios)."); setBusy(false); return; }
       if (form.role !== "supervisor") delete payload.equipes_gerenciadas;
       await api.post("/colaboradores", payload);
       showToast("Colaborador cadastrado.");
-      setForm({ ...form, nome: "", email: "", senha_inicial: "", data_admissao: "", data_aniversario: "", ciclo_12x36_inicio: "" });
+      setForm({ ...form, nome: "", email: "", senha_inicial: "", data_admissao: "", data_aniversario: "", ciclo_12x36_inicio: "", intervalo_inicio: "", intervalo_fim: "" });
       onCreated();
     } catch (e) {
       showToast(e.message || "Erro ao cadastrar.");
@@ -96,6 +97,8 @@ function NovoColaboradorForm({ onCreated, showToast, equipeOptions, escalaOption
         <div className="field"><label>Escala</label><EditableSelect value={form.escala_tipo} onChange={(v) => setForm({ ...form, escala_tipo: v })} options={escalaOptions} placeholder="ex: 5x1" /></div>
         <div className="field"><label>Início</label><input type="time" value={form.horario_inicio} onChange={(e) => setForm({ ...form, horario_inicio: e.target.value })} /></div>
         <div className="field"><label>Fim</label><input type="time" value={form.horario_fim} onChange={(e) => setForm({ ...form, horario_fim: e.target.value })} /></div>
+        <div className="field"><label>Intervalo — início (opcional)</label><input type="time" value={form.intervalo_inicio} onChange={(e) => setForm({ ...form, intervalo_inicio: e.target.value })} /></div>
+        <div className="field"><label>Intervalo — fim (opcional)</label><input type="time" value={form.intervalo_fim} onChange={(e) => setForm({ ...form, intervalo_fim: e.target.value })} /></div>
         <div className="field"><label>Senha inicial</label><input type="text" value={form.senha_inicial} onChange={(e) => setForm({ ...form, senha_inicial: e.target.value })} placeholder="mín. 10 caracteres" /></div>
         <div className="field"><label>Data de admissão (opcional)</label><input type="date" value={form.data_admissao} onChange={(e) => setForm({ ...form, data_admissao: e.target.value })} /></div>
         <div className="field"><label>Aniversário (opcional)</label><input type="date" value={form.data_aniversario} onChange={(e) => setForm({ ...form, data_aniversario: e.target.value })} /></div>

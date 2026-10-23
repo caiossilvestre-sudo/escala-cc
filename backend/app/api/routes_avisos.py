@@ -1,4 +1,5 @@
 from datetime import date as date_type, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_colaborador, log_action, require_admin
 from app.core.email import enviar_email_aviso, smtp_configurado
-from app.db.models import Aviso, Colaborador, Configuracao, Ferias, Plantao, SolicitacaoFolga
+from app.db.models import Atestado, Aviso, Colaborador, Configuracao, Feriado, Ferias, Plantao, SolicitacaoFolga
 from app.db.session import get_db
 from app.logic import ciclo_ferias, prazo_folga_plantao
 from app.schemas import AvisoOut
@@ -185,14 +186,112 @@ def _verificar_chave_teams(x_api_key: str = Header(default="")):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Chave de acesso inválida.")
 
 
+FUSO_LOCAL = ZoneInfo("America/Sao_Paulo")
+ANTECEDENCIA_INTERVALO_MIN = 15      # avisa até 15 min antes do intervalo começar
+VALIDADE_LEMBRETE_INTERVALO_MIN = 30  # lembrete que ficou parado mais que isso não é mais enviado
+
+
+def _min_do_dia(hhmm: str) -> int:
+    return int(hhmm[:2]) * 60 + int(hhmm[3:])
+
+
+def _dentro(ini_min: int, inicio: str, fim: str) -> bool:
+    """O minuto `ini_min` cai dentro de [inicio, fim]? Cobre turno que vira a noite."""
+    a, b = _min_do_dia(inicio), _min_do_dia(fim)
+    return a <= ini_min <= b if a <= b else (ini_min >= a or ini_min <= b)
+
+
+def _esta_de_servico(db: Session, c: Colaborador, dia: date_type, ini_min: int) -> bool:
+    """A pessoa está trabalhando na hora em que o intervalo começa? Espelha a
+    regra do Dashboard ("Quem está em expediente agora"): plantão do dia (ou da
+    madrugada de ontem) manda; senão 12x36 do Monitoramento; domingo/feriado só
+    com plantão; no resto, o horário normal. Folga aprovada, atestado e férias
+    no dia cancelam o lembrete."""
+    if db.query(SolicitacaoFolga).filter(SolicitacaoFolga.colaborador_id == c.id, SolicitacaoFolga.status == "aprovada", SolicitacaoFolga.data_solicitada == dia).first():
+        return False
+    if db.query(Atestado).filter(Atestado.colaborador_id == c.id, Atestado.data_inicio <= dia, Atestado.data_fim >= dia).first():
+        return False
+    if db.query(Ferias).filter(Ferias.colaborador_id == c.id, Ferias.status == "aprovada", Ferias.data_inicio <= dia, Ferias.data_fim >= dia).first():
+        return False
+
+    ontem = dia - timedelta(days=1)
+    plantao_hoje = db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data == dia).all()
+    plantao_ontem = db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data == ontem).all()
+    for p in plantao_ontem:
+        if p.horario_fim < p.horario_inicio and ini_min <= _min_do_dia(p.horario_fim):
+            return True  # madrugada de um plantão que começou ontem
+    for p in plantao_hoje:
+        cruza = p.horario_fim < p.horario_inicio
+        if (ini_min >= _min_do_dia(p.horario_inicio)) if cruza else _dentro(ini_min, p.horario_inicio, p.horario_fim):
+            return True
+    if plantao_hoje:
+        return False
+
+    if c.equipe == "Monitoramento" and c.escala_tipo == "12x36" and c.ciclo_12x36_inicio:
+        cruza = c.horario_fim < c.horario_inicio
+        if cruza and ini_min <= _min_do_dia(c.horario_fim) and ontem >= c.ciclo_12x36_inicio and (ontem - c.ciclo_12x36_inicio).days % 2 == 0:
+            return True
+        if dia >= c.ciclo_12x36_inicio and (dia - c.ciclo_12x36_inicio).days % 2 == 0:
+            return ini_min >= _min_do_dia(c.horario_inicio) if cruza else _dentro(ini_min, c.horario_inicio, c.horario_fim)
+        return False
+
+    feriado = db.query(Feriado).filter(Feriado.data == dia).all()
+    if dia.weekday() == 6 or any(f.tipo == "obrigatorio" or f.trabalha for f in feriado):
+        return False  # domingo/feriado: só quem tem plantão (tratado acima)
+    return _dentro(ini_min, c.horario_inicio, c.horario_fim)
+
+
+def gerar_lembretes_intervalo(db: Session, agora: datetime | None = None) -> int:
+    """Cria o aviso "intervalo" de quem tem o intervalo começando nos próximos
+    15 minutos (uma vez por pessoa/dia). Não depende de ninguém clicar em nada:
+    roda sempre que o Power Automate consulta os pendentes — por isso o fluxo
+    precisa consultar com frequência (a cada 5 min). O aviso nasce já como
+    "lido" (não vira pop-up nem pendência no painel); só serve de mensagem pro Teams."""
+    agora = agora or datetime.now(FUSO_LOCAL)
+    agora_min = agora.hour * 60 + agora.minute
+    hoje = agora.date()
+    criados = 0
+    candidatos = db.query(Colaborador).filter(
+        Colaborador.status == "ativo", Colaborador.role.in_(("colaborador", "supervisor")),
+        Colaborador.intervalo_inicio.isnot(None), Colaborador.intervalo_fim.isnot(None),
+    ).all()
+    for c in candidatos:
+        ini_min = _min_do_dia(c.intervalo_inicio)
+        falta = (ini_min - agora_min) % 1440
+        if falta > ANTECEDENCIA_INTERVALO_MIN:
+            continue
+        dia = hoje if ini_min >= agora_min else hoje + timedelta(days=1)  # virou a meia-noite
+        if db.query(Aviso).filter(Aviso.colaborador_id == c.id, Aviso.tipo == "intervalo", Aviso.data == dia).first():
+            continue
+        if not _esta_de_servico(db, c, dia, ini_min):
+            continue
+        db.add(Aviso(
+            colaborador_id=c.id, tipo="intervalo", data=dia, canais=[], lido=True, lido_via="automatico", lido_em=datetime.utcnow(),
+            mensagem=f"⏰ Lembrete: seu intervalo começa às {c.intervalo_inicio} (vai até {c.intervalo_fim}).",
+        ))
+        criados += 1
+    if criados:
+        db.commit()
+    return criados
+
+
 @router.get("/pendentes-teams")
 def pendentes_teams(db: Session = Depends(get_db), _: None = Depends(_verificar_chave_teams)):
-    """O Power Automate chama isso periodicamente (ex: a cada 15 min) pra
-    buscar avisos que ainda não foram mandados pro Teams — em vez do nosso
-    sistema tentar chamar o Power Automate direto, o que exigiria OAuth."""
+    """O Power Automate chama isso periodicamente (a cada 5 min, por causa do
+    lembrete de intervalo) pra buscar avisos que ainda não foram mandados pro
+    Teams — em vez do nosso sistema tentar chamar o Power Automate direto, o
+    que exigiria OAuth."""
+    gerar_lembretes_intervalo(db)
     pendentes = db.query(Aviso).filter(Aviso.teams_enviado.isnot(True)).all()
     resultado = []
+    limite = datetime.utcnow() - timedelta(minutes=VALIDADE_LEMBRETE_INTERVALO_MIN)
     for a in pendentes:
+        if a.tipo == "intervalo" and a.created_at and a.created_at < limite:
+            # fluxo ficou parado: lembrete de intervalo atrasado não faz sentido, descarta
+            a.teams_enviado = True
+            a.teams_erro = "expirado: não enviado (ficou pendente por mais de 30 min)"
+            db.commit()
+            continue
         colaborador = db.get(Colaborador, a.colaborador_id)
         if not colaborador:
             continue

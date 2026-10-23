@@ -11,7 +11,7 @@ from app.core.security import hash_password
 from app.db.models import Colaborador, Ferias, HistoricoEquipe, Plantao, SolicitacaoFolga
 from app.db.session import get_db
 from app.schemas import (
-    ColaboradorIn, ColaboradorOut, ColaboradorUpdateIn, DesligarIn, HistoricoEquipeOut, ResetarSenhaIn,
+    ColaboradorIn, ColaboradorOut, ColaboradorUpdateIn, DesligarIn, HistoricoEquipeOut, IntervalosIn, ResetarSenhaIn,
 )
 
 router = APIRouter(prefix="/colaboradores", tags=["colaboradores"])
@@ -52,12 +52,43 @@ def criar(body: ColaboradorIn, request: Request, db: Session = Depends(get_db), 
         must_change_password=True,
         data_admissao=body.data_admissao, data_aniversario=body.data_aniversario,
         ciclo_12x36_inicio=body.ciclo_12x36_inicio,
+        intervalo_inicio=body.intervalo_inicio, intervalo_fim=body.intervalo_fim,
     )
     db.add(novo)
     db.commit()
     db.refresh(novo)
     log_action(db, request, user, "criar_colaborador", "colaborador", novo.id, {"nome": novo.nome})
     return novo
+
+
+@router.post("/intervalos")
+def salvar_intervalos(body: IntervalosIn, request: Request, db: Session = Depends(get_db), user: Colaborador = Depends(require_admin_or_supervisor)):
+    """Cadastra/ajusta o intervalo de vários colaboradores de uma vez (tela
+    "Intervalos"). Os dois horários vazios removem o intervalo. Supervisor só
+    mexe nos próprios setores. Valida tudo antes de gravar — se um item for
+    inválido, nada é salvo."""
+    alvos = []
+    for item in body.itens:
+        alvo = db.get(Colaborador, item.colaborador_id)
+        if not alvo:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Colaborador não encontrado.")
+        check_escopo_equipe(user, alvo.equipe)
+        ini, fim = item.intervalo_inicio, item.intervalo_fim
+        if (ini is None) != (fim is None):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{alvo.nome}: informe o início e o fim do intervalo (ou deixe os dois vazios).")
+        if ini is not None:
+            for h in (ini, fim):
+                hh, mm = int(h[:2]), int(h[3:])
+                if hh > 23 or mm > 59:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{alvo.nome}: horário inválido ({h}).")
+            if ini == fim:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{alvo.nome}: o fim do intervalo não pode ser igual ao início.")
+        alvos.append((alvo, ini, fim))
+    for alvo, ini, fim in alvos:
+        alvo.intervalo_inicio, alvo.intervalo_fim = ini, fim
+    db.commit()
+    log_action(db, request, user, "definir_intervalos", "colaborador", None, {"quantidade": len(alvos)})
+    return {"ok": True, "atualizados": len(alvos)}
 
 
 @router.patch("/{colaborador_id}", response_model=ColaboradorOut)

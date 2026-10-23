@@ -40,6 +40,8 @@ class Colaborador(Base):
     equipes_gerenciadas = Column(JSON, nullable=True)  # lista de setores, só usado quando role="supervisor"
     data_admissao = Column(Date, nullable=True)
     data_aniversario = Column(Date, nullable=True)
+    intervalo_inicio = Column(String, nullable=True)  # "HH:MM" — começo do intervalo (lembrete no Teams 15 min antes)
+    intervalo_fim = Column(String, nullable=True)     # "HH:MM"
     ciclo_12x36_inicio = Column(Date, nullable=True)  # 1º dia de trabalho do ciclo 12x36 (Monitoramento) — dali em diante alterna trabalho/folga a cada dia
 
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -145,14 +145,21 @@ function EmExpedienteAgora({ colaboradores, plantoes, solicitacoes, atestados, f
         <div className="empty">{diaEspecial ? "Ninguém de plantão agora." : "Ninguém em expediente neste horário."}</div>
       ) : (
         <table className="tbl">
-          <thead><tr><th>Nome</th><th>Setor</th><th>Horário</th></tr></thead>
-          <tbody>{lista.map((x) => (
-            <tr key={x.colaborador.id}>
-              <td>{x.colaborador.nome}</td>
-              <td><Pill status="plantao">{x.tipo}</Pill></td>
-              <td className="mono">{x.inicio}–{x.fim}</td>
-            </tr>
-          ))}</tbody>
+          <thead><tr><th>Nome</th><th>Setor</th><th>Horário</th><th>Intervalo</th></tr></thead>
+          <tbody>{lista.map((x) => {
+            const ii = x.colaborador.intervalo_inicio, fi = x.colaborador.intervalo_fim;
+            const noIntervalo = ii && fi && estaNoHorario(horaAtual, ii, fi);
+            return (
+              <tr key={x.colaborador.id}>
+                <td>{x.colaborador.nome}</td>
+                <td><Pill status="plantao">{x.tipo}</Pill></td>
+                <td className="mono">{x.inicio}–{x.fim}</td>
+                <td className="mono" style={noIntervalo ? { color: "#C2570C", fontWeight: 600 } : undefined}>
+                  {ii && fi ? <>{ii}–{fi}{noIntervalo && " · agora"}</> : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                </td>
+              </tr>
+            );
+          })}</tbody>
         </table>
       )}
     </div>

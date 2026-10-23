@@ -29,6 +29,8 @@ def run_safe_migrations():
         "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS data_admissao DATE",
         "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS data_aniversario DATE",
         "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS ciclo_12x36_inicio DATE",
+        "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS intervalo_inicio VARCHAR",
+        "ALTER TABLE colaboradores ADD COLUMN IF NOT EXISTS intervalo_fim VARCHAR",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS vezes_mostrado INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS lido_em TIMESTAMP",
         "ALTER TABLE avisos ADD COLUMN IF NOT EXISTS lido_via VARCHAR",
