@@ -1,5 +1,5 @@
 // Passagem de plantão — constantes e o cartão de pendência usado em várias telas.
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { api } from "../api/client";
 import { dataHora } from "./util";
 import { AnexosEditor, AnexosVer } from "./PassagemAnexos";
@@ -47,13 +47,28 @@ export function linkSeguro(url) {
   return url && /^https?:\/\//i.test(url) ? url : null;
 }
 
-/** Uma pendência, com comentar / resolver / reabrir. onMudou(pendenciaAtualizada). */
+/** Quem está usando a tela: { eu: id do colaborador, gerencia: bool } — decide o botão Excluir. */
+export const PassagemUsuario = createContext({ eu: null, gerencia: false });
+
+/** Uma pendência, com comentar / resolver / reabrir / excluir. onMudou(pendenciaAtualizada);
+ * excluída chega como { ...p, status: "excluida" }. */
 export function PendenciaCard({ p, onMudou, showToast, mostrarOrigem = true }) {
   const [acao, setAcao] = useState(null); // null | "resolver" | "comentar"
   const [texto, setTexto] = useState("");
   const [prints, setPrints] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [verTudo, setVerTudo] = useState(false);
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const { eu, gerencia } = useContext(PassagemUsuario);
+  const podeExcluir = gerencia || (p.criada_por_id && p.criada_por_id === eu && p.status === "aberta");
+  const excluir = async () => {
+    setEnviando(true);
+    try {
+      await api.delete(`/ferramentas/passagem/pendencias/${p.id}`);
+      showToast?.("Pendência excluída.");
+      onMudou?.({ ...p, status: "excluida" });
+    } catch (e) { showToast?.(e.message); setEnviando(false); }
+  };
   const cat = CAT[p.categoria] || { nome: p.categoria };
   const hist = p.historico || [];
   const histVisivel = verTudo ? hist : hist.slice(-1);
@@ -117,8 +132,15 @@ export function PendenciaCard({ p, onMudou, showToast, mostrarOrigem = true }) {
             </button>
           </div>
         </div>
+      ) : confirmarExclusao ? (
+        <div className="pp-acao-botoes pp-confirma">
+          <span>Excluir esta pendência{(p.anexos || []).length ? " e os prints dela" : ""}? Não dá para desfazer.</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmarExclusao(false)}>Não</button>
+          <button type="button" className="btn btn-danger btn-sm" disabled={enviando} onClick={excluir}>Sim, excluir</button>
+        </div>
       ) : (
         <div className="pp-acao-botoes">
+          {podeExcluir && <button type="button" className="btn btn-ghost btn-sm pp-excluir" onClick={() => setConfirmarExclusao(true)}>Excluir</button>}
           {p.status === "aberta" ? (
             <>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAcao("comentar")}>Comentar</button>
