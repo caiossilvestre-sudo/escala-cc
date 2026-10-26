@@ -78,7 +78,7 @@ const NAV_COLAB = [
 ];
 
 const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador", ferramentas: "Somente Ferramentas" };
-const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰" };
+const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰", passagem_entrada: "📋" };
 
 /** Mostra os avisos ainda não lidos assim que a pessoa loga — em vez de ela
  * precisar lembrar de abrir a aba "Avisos". Fica fora do <fieldset> pra

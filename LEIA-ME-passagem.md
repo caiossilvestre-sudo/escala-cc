@@ -1,24 +1,29 @@
-# Passagem de plantão — Ferramentas › Plantão
+# Passagem de plantão + lembretes pelo Teams
 
-Arquivos no mesmo caminho do repositório `escala-cc` (descompacte por cima da pasta do projeto).
+Descompacte por cima da pasta do projeto `escala-cc` (mesmos caminhos), depois
+GitHub Desktop → commit → push. No servidor:
 
-## Deploy
-1. GitHub Desktop → commit → push
-2. No servidor: `git pull` → `cd frontend && npm run build` → `sudo systemctl restart escala`
-3. **Nginx: nada a fazer** — as rotas novas ficam em `/ferramentas/passagem/...`, prefixo já liberado.
-4. **Banco: nada a fazer** — as tabelas novas (`ft_passagens`, `ft_pendencias`) são criadas sozinhas no start. Nenhuma tabela existente é alterada.
+    cd /opt/escala_app
+    git status            # arquivo modificado no servidor? git checkout -- <arquivo>
+    git pull
+    cd frontend && npm run build && cd ..
+    sudo systemctl restart escala
 
-## Liberar para a equipe
-Ferramentas › LifeGuard › Documentação › Permissões (admin):
-- Plantonistas: botão **Plantonista** (ou a caixinha "Registrar / baixar")
-- Gestor/supervisor: caixinha **Gestor** (já inclui registrar)
-Admin do sistema já tem tudo.
+- Nginx: nada a fazer (rotas em /ferramentas/passagem, prefixo já liberado)
+- Banco: nada a fazer (tabelas ft_passagens / ft_pendencias criadas no start)
+- pip: nada novo
 
-## E-mail a cada passagem (opcional)
-No `.env` do backend: `PASSAGEM_EMAIL_PARA=voce@empresa.com.br,outro@empresa.com.br`
-(usa o SMTP que o sistema já tem). Reinicie o serviço.
+## .env do backend (opcional)
+    PASSAGEM_LINK=https://suporte-tecnico.silvertec.net.br   # link nas mensagens do Teams
+    PASSAGEM_LEMBRETE_MIN=30                                 # antecedência do "registre a passagem"
+    # PASSAGEM_LEMBRETES=0                                   # desliga os lembretes
+    # PASSAGEM_EMAIL_PARA=voce@empresa.com.br                # e-mail a cada passagem
 
-## Arquivos
-Novos: backend/app/ferramentas/routes_passagem.py, frontend/src/ferramentas/Passagem*.jsx, passagemUtil.jsx
-Alterados: ferramentas/models.py, schemas.py, seguranca.py, routes.py (2 linhas no fim), __init__.py (comentário),
-paginas.js, MenuFerramentas.jsx, Permissoes.jsx, ferramentas.css, App.jsx (1 linha: aceita abas "ft-"), backend/.env.example
+## Liberar acesso
+Ferramentas › LifeGuard › Documentação › Permissões:
+plantonistas = "Plantonista" (Registrar / baixar) · gestor = "Gestor".
+Os lembretes do Teams vão para quem tem Registrar e NÃO é Gestor,
+conforme o horário/ciclo 12x36 do cadastro do colaborador.
+
+## Power Automate
+Se o fluxo filtra pelo campo "tipo", inclua: passagem_registrar, passagem_entrada.

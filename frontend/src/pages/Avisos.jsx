@@ -4,7 +4,7 @@ import { useApiList, useToast } from "../lib/hooks";
 import { api } from "../api/client";
 import { todayISO, formatBR } from "../lib/helpers";
 
-const TIPO_LABEL = { mensal: "Lista mensal (dia 1º)", semanal: "Aviso semanal (segunda)", cobranca: "Cobrança de folga", aniversario: "Aniversário", aniversario_trabalho: "Aniversário de empresa", ferias_aprovada: "Férias aprovadas", ferias_ciclo: "Lembrete de férias", intervalo: "Lembrete de intervalo" };
+const TIPO_LABEL = { mensal: "Lista mensal (dia 1º)", semanal: "Aviso semanal (segunda)", cobranca: "Cobrança de folga", aniversario: "Aniversário", aniversario_trabalho: "Aniversário de empresa", ferias_aprovada: "Férias aprovadas", ferias_ciclo: "Lembrete de férias", intervalo: "Lembrete de intervalo", passagem_registrar: "Passagem · registrar", passagem_entrada: "Passagem · entrada no plantão" };
 const VIA_LABEL = { manual: "clicou em marcar como lido", automatico: "visto 3x sem ação (marcado sozinho)" };
 
 function formatarDataHora(iso) {

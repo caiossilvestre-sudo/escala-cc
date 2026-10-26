@@ -189,6 +189,8 @@ def _verificar_chave_teams(x_api_key: str = Header(default="")):
 FUSO_LOCAL = ZoneInfo("America/Sao_Paulo")
 ANTECEDENCIA_INTERVALO_MIN = 15      # avisa até 15 min antes do intervalo começar
 VALIDADE_LEMBRETE_INTERVALO_MIN = 30  # lembrete que ficou parado mais que isso não é mais enviado
+# Lembretes "de hora marcada": se o Power Automate ficou parado, não manda atrasado
+TIPOS_COM_VALIDADE = ("intervalo", "passagem_registrar", "passagem_entrada")
 
 
 def _min_do_dia(hhmm: str) -> int:
@@ -282,12 +284,18 @@ def pendentes_teams(db: Session = Depends(get_db), _: None = Depends(_verificar_
     Teams — em vez do nosso sistema tentar chamar o Power Automate direto, o
     que exigiria OAuth."""
     gerar_lembretes_intervalo(db)
+    try:  # lembretes da Passagem de plantão (Ferramentas) — falha aqui não trava os outros avisos
+        from app.ferramentas.routes_passagem import gerar_lembretes_passagem
+        gerar_lembretes_passagem(db)
+    except Exception as e:
+        db.rollback()
+        print(f"[avisos] lembretes da passagem: {e}")
     pendentes = db.query(Aviso).filter(Aviso.teams_enviado.isnot(True)).all()
     resultado = []
     limite = datetime.utcnow() - timedelta(minutes=VALIDADE_LEMBRETE_INTERVALO_MIN)
     for a in pendentes:
-        if a.tipo == "intervalo" and a.created_at and a.created_at < limite:
-            # fluxo ficou parado: lembrete de intervalo atrasado não faz sentido, descarta
+        if a.tipo in TIPOS_COM_VALIDADE and a.created_at and a.created_at < limite:
+            # fluxo ficou parado: lembrete atrasado (intervalo / passagem) não faz sentido, descarta
             a.teams_enviado = True
             a.teams_erro = "expirado: não enviado (ficou pendente por mais de 30 min)"
             db.commit()
