@@ -22,7 +22,7 @@ from app.ferramentas.schemas import (
     MapearFotosIn, PermissaoIn, SolicitacaoIn, TratarSolicitacaoIn,
 )
 from app.ferramentas.seguranca import (
-    PERMISSOES, PRESETS, SO_PARA_TECNICO, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
+    PERMISSOES, PRESETS, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
 )
 
 VER, EDITAR, SENHAS, EXCLUIR, GERENCIAR, TRATAR, ADMIN = (exigir(p) for p in (
@@ -800,7 +800,7 @@ def listar_permissoes(db: Session = Depends(get_db), user=Depends(ADMIN)):
         "presets": PRESETS,
         "pessoas": [{
             "colaborador_id": p.id, "nome": p.nome, "equipe": p.equipe, "role": p.role,
-            "permissoes": [k for k in PERMISSOES if k not in SO_PARA_TECNICO] if p.role == "admin" else acessos.get(p.id, []),
+            "permissoes": list(PERMISSOES) if p.role == "admin" else acessos.get(p.id, []),
             "fixo": p.role == "admin",  # admin do Escala sempre tem tudo
         } for p in pessoas],
     }
@@ -827,3 +827,10 @@ def definir_permissao(body: PermissaoIn, request: Request, db: Session = Depends
     db.commit()
     log_action(db, request, user, "ft_permissoes", "colaborador", alvo.id, {"antes": antes, "depois": novas})
     return {"ok": True, "permissoes": novas}
+
+
+# ---------------------------------------------------- passagem de plantão
+# Rotas em /ferramentas/passagem/... (mesmo prefixo já liberado no Nginx).
+from app.ferramentas.routes_passagem import router as _passagem_router  # noqa: E402
+
+router.include_router(_passagem_router)

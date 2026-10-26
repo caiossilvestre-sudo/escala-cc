@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Literal
+from datetime import date, datetime
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -176,6 +176,49 @@ class CameraResumo(BaseModel):
     status: str
     tem_foto: bool
     foto_em: datetime | None
+
+
+# ------------------------------------------------- Passagem de plantão (12x36)
+
+CategoriaPend = Literal["prtg", "ixc", "zammad", "projeto", "outro"]
+ParaPend = Literal["horario_comercial", "proximo_plantao"]
+Prioridade = Literal["normal", "alta"]
+Turno = Literal["diurno", "noturno"]
+Hora = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+
+
+class PendenciaIn(BaseModel):
+    id: str | None = Field(default=None, max_length=60)  # preenchido = editar uma que já existe
+    categoria: CategoriaPend
+    referencia: str | None = S(200)
+    descricao: str = Field(min_length=3, max_length=4000)
+    para: ParaPend = "horario_comercial"
+    prioridade: Prioridade = "normal"
+    link: str | None = S(500)
+    anexos: list[str] = Field(default_factory=list, max_length=8)  # ids de FtAnexo
+
+
+class PassagemIn(BaseModel):
+    data: date
+    turno: Turno
+    horario_inicio: Hora = "07:00"
+    horario_fim: Hora = "19:00"
+    resumo: str = Field(min_length=3, max_length=8000)
+    recados: str | None = S(4000)
+    sem_pendencia: list[CategoriaPend] = Field(default_factory=list, max_length=5)
+    pendencias: list[PendenciaIn] = Field(default_factory=list, max_length=60)
+    anexos: list[str] = Field(default_factory=list, max_length=8)
+
+
+class PendenciaAcaoIn(BaseModel):
+    texto: str | None = Field(default=None, max_length=4000)
+    anexos: list[str] = Field(default_factory=list, max_length=8)
+
+
+class AnexoIn(BaseModel):
+    # imagem em base64 (aceita "data:image/...;base64,..."); o servidor regrava em JPEG
+    imagem_base64: str = Field(min_length=100, max_length=11_500_000)
+    nome: str | None = Field(default=None, max_length=200)
 
 
 TipoSolicitacao = Literal["dados", "trocada", "removida", "foto", "outro"]

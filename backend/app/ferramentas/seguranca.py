@@ -16,23 +16,25 @@ PERMISSOES = {
     "doc.editar": "Documentação · cadastrar/editar e importar fotos",
     "doc.senhas": "Documentação · ver senhas dos gravadores",
     "doc.excluir": "Documentação · excluir câmeras LifeGuard",
-    "nvr.gerenciar": "Gravadores · incluir, editar, desativar, excluir e liberar canais",
     "doc.solicitar": "Documentação · solicitar alterações e enviar fotos para o N2 (técnico)",
-    "doc.tratar": "Solicitações · tratar pedidos dos técnicos (N2)",
-    "ft.somente": "Menu só com Ferramentas (técnico: não vê escala, férias etc.)",
+    "doc.tratar": "Documentação · tratar as solicitações dos técnicos (N2)",
+    "nvr.gerenciar": "Gravadores · incluir, editar, desativar, excluir e liberar canais",
+    "passagem.registrar": "Passagem de plantão · registrar, dar ciência e baixar pendências",
+    "passagem.gerenciar": "Passagem de plantão · painel do gestor, editar e excluir qualquer registro",
     "ft.admin": "Gerenciar permissões",
 }
 # Atalhos da tela de permissões (só preenchem as caixinhas)
 PRESETS = {
     "n1": ["doc.ver", "doc.editar"],
     "n2": ["doc.ver", "doc.editar", "doc.senhas", "doc.tratar"],
-    "tecnico": ["doc.ver", "doc.solicitar", "ft.somente"],
+    "leitura": ["doc.ver"],
+    "plantonista": ["passagem.registrar"],
+    "tecnico": ["doc.ver", "doc.solicitar"],
 }
 # Quem tem uma permissão de Documentação precisa conseguir consultar
-# Permissões que não fazem sentido para o admin do Escala (que tem todo o resto)
-SO_PARA_TECNICO = {"ft.somente"}
 IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver",
-           "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "ft.somente": "doc.ver"}
+           "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver",
+           "passagem.gerenciar": "passagem.registrar"}
 
 
 def normalizar_permissoes(lista) -> list[str]:
@@ -48,7 +50,7 @@ def normalizar_permissoes(lista) -> list[str]:
 def permissoes_do(db: Session, user: Colaborador) -> set[str]:
     """Admin do Escala tem tudo. Os demais: o que estiver em ft_acessos."""
     if user.role == "admin":
-        return set(PERMISSOES) - SO_PARA_TECNICO
+        return set(PERMISSOES)
     a = db.get(FtAcesso, user.id)
     return set(normalizar_permissoes(a.permissoes)) if a else set()
 

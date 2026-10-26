@@ -10,7 +10,7 @@ sendo a fonte oficial de clientes; aqui é só a referência para busca).
 from datetime import datetime
 
 from sqlalchemy import (
-    JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
+    JSON, Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
 )
 
 from app.db.models import gen_id
@@ -134,6 +134,77 @@ class FtCredencial(Base):
     nome_cliente = Column(String, nullable=True)
     senha_cifrada = Column(Text, nullable=True)
     ordem = Column(Integer, nullable=False, default=0)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+
+
+# ------------------------------------------------- Passagem de plantão (12x36)
+
+class FtPassagem(Base):
+    """Passagem de bastão de um plantão (ex.: Monitoramento 12x36, 07–19 / 19–07).
+
+    Quem sai registra o que houve e o que ficou pendente; quem entra dá
+    "ciência". As pendências ficam em FtPendencia e continuam abertas de um
+    plantão para o outro até alguém dar baixa — não é preciso repetir.
+    """
+    __tablename__ = "ft_passagens"
+    __table_args__ = (UniqueConstraint("autor_id", "data", "turno", name="uq_ft_passagem_autor_data_turno"),)
+
+    id = Column(String, primary_key=True, default=gen_id)
+    autor_id = Column(String, ForeignKey("colaboradores.id"), nullable=False, index=True)
+    equipe = Column(String, nullable=True, index=True)          # setor do autor no momento do registro
+    data = Column(Date, nullable=False, index=True)              # dia em que o plantão COMEÇOU
+    turno = Column(String, nullable=False, default="diurno")     # diurno | noturno
+    horario_inicio = Column(String, nullable=False, default="07:00")
+    horario_fim = Column(String, nullable=False, default="19:00")
+    resumo = Column(Text, nullable=False)                        # o que aconteceu no plantão
+    recados = Column(Text, nullable=True)                        # recado geral para o próximo plantão
+    # Categorias em que a pessoa confirmou "nada pendente" (ex.: ["prtg", "zammad"])
+    sem_pendencia = Column(JSON, nullable=False, default=list)
+    enviado_em = Column(DateTime, default=datetime.utcnow, index=True)
+    editado_em = Column(DateTime, nullable=True)
+    ciencia_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    ciencia_em = Column(DateTime, nullable=True)
+
+
+class FtPendencia(Base):
+    """Item que ficou para o próximo plantão ou para o horário comercial."""
+    __tablename__ = "ft_pendencias"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    passagem_id = Column(String, ForeignKey("ft_passagens.id"), nullable=False, index=True)
+    categoria = Column(String, nullable=False, index=True)       # prtg | ixc | zammad | projeto | outro
+    referencia = Column(String, nullable=True)                   # sensor, nº do atendimento, nº do ticket, projeto
+    descricao = Column(Text, nullable=False)
+    para = Column(String, nullable=False, default="horario_comercial")  # horario_comercial | proximo_plantao
+    prioridade = Column(String, nullable=False, default="normal")       # normal | alta
+    link = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="aberta", index=True)  # aberta | resolvida
+    # Acompanhamento: [{"em": iso, "por_id": "...", "texto": "..."}]
+    historico = Column(JSON, nullable=False, default=list)
+    criada_em = Column(DateTime, default=datetime.utcnow)
+    criada_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    resolvida_em = Column(DateTime, nullable=True)
+    resolvida_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    resolucao = Column(Text, nullable=True)
+
+
+class FtAnexo(Base):
+    """Imagem/print anexado na passagem, numa pendência, num comentário ou na
+    baixa. O arquivo fica no disco (pasta de fotos/passagem); aqui só o nome.
+    Sobe antes de a passagem ser enviada (fica "solto", sem vínculo) e é
+    vinculado ao salvar; solto há mais de 1 dia é apagado sozinho."""
+    __tablename__ = "ft_anexos"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    passagem_id = Column(String, ForeignKey("ft_passagens.id"), nullable=True, index=True)
+    pendencia_id = Column(String, ForeignKey("ft_pendencias.id"), nullable=True, index=True)
+    contexto = Column(String, nullable=True)   # passagem | pendencia | comentario | resolucao (None = solto)
+    arquivo = Column(String, nullable=False)
+    nome = Column(String, nullable=True)       # nome original do arquivo (ou "print")
+    bytes = Column(Integer, nullable=True)
+    largura = Column(Integer, nullable=True)
+    altura = Column(Integer, nullable=True)
+    criado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
 
 

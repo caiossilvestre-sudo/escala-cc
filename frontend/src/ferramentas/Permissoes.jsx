@@ -5,11 +5,12 @@ import { TopBar, Spinner, ErrorBox } from "../components/UI";
 // Cabeçalho curto de cada coluna (o texto completo vem do backend, no title)
 const CURTO = {
   "doc.ver": "Consultar / exportar", "doc.editar": "Cadastrar / importar foto", "doc.senhas": "Senhas", "doc.excluir": "Excluir",
+  "doc.solicitar": "Solicitar (técnico)", "doc.tratar": "Tratar pedidos",
   "nvr.gerenciar": "Gravadores",
   "passagem.registrar": "Registrar / baixar", "passagem.gerenciar": "Gestor",
   "ft.admin": "Permissões",
 };
-const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "passagem.gerenciar": "passagem.registrar" };
+const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "passagem.gerenciar": "passagem.registrar" };
 // Colunas agrupadas no cabeçalho (prefixo do código -> título do grupo)
 const GRUPOS = { doc: "Documentação", passagem: "Passagem de plantão" };
 const grupoDe = (codigo) => (GRUPOS[codigo.split(".")[0]] ? codigo.split(".")[0] : null);
@@ -80,7 +81,7 @@ export default function Permissoes({ onVoltar, showToast }) {
       <TopBar title="Ferramentas · Permissões" subtitle="Acesso por página/tópico das Ferramentas — independe do perfil na escala" right={<button className="btn btn-ghost" onClick={onVoltar}>← Voltar</button>} />
       <div className="content">
         <ErrorBox error={erro} />
-        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1 e N2 só preenchem as caixinhas da Documentação; Plantonista libera a Passagem de plantão — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
+        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1, N2 e Técnico só preenchem as caixinhas da Documentação (Técnico consulta e envia pedidos para o N2; N2 inclui tratar esses pedidos); Plantonista libera a Passagem de plantão — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
         <div className="card">
           <div className="ft-filtros" style={{ marginBottom: 12 }}>
             <input type="search" placeholder="Filtrar por nome ou setor" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
@@ -107,7 +108,8 @@ export default function Permissoes({ onVoltar, showToast }) {
                         <div style={{ display: "flex", gap: 4 }}>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.leitura)} title="Só consultar/exportar a Documentação — sem editar nada">Leitura</button>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.n1)}>N1</button>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.n2)}>N2</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.n2)} title="Documentação completa + tratar as solicitações dos técnicos">N2</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.tecnico)} title="Consultar e pedir alterações/fotos ao N2 — não edita nada">Técnico</button>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, [...new Set([...p.permissoes, ...(dados.presets.plantonista || [])])])} title="Libera registrar a passagem de plantão (mantém o resto)">Plantonista</button>
                           <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, [])} title="Remover todo o acesso">Nenhum</button>
                         </div>
