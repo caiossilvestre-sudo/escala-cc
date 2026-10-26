@@ -483,3 +483,165 @@ def comentar(pend_id: str, body: PendenciaAcaoIn, request: Request, db: Session 
     _anotar(x, user, texto)
     db.commit()
     return _resposta_pendencia(db, x)
+
+
+# ------------------------------------------------- lembretes pelo Teams
+#
+# Rodam junto com o lembrete de intervalo: toda vez que o Power Automate
+# consulta GET /avisos/pendentes-teams (a cada 5 min), estas funções criam os
+# avisos que estiverem na hora. Cada aviso sai uma vez só por pessoa/plantão.
+#
+#   passagem_registrar -> 30 min antes do FIM do plantão: "registre a passagem"
+#                         (não sai se a passagem daquele plantão já foi enviada)
+#   passagem_entrada   -> no INÍCIO do plantão: resumo das pendências abertas
+#                         (também aparece no pop-up de avisos ao entrar no sistema)
+#
+# Quem recebe: plantonistas = quem tem "Registrar / baixar" da Passagem e NÃO
+# tem "Gestor" (o gestor não trabalha em plantão). Quando a pessoa está
+# trabalhando sai da mesma regra do lembrete de intervalo (plantão do dia,
+# ciclo 12x36, folga/atestado/férias cancelam).
+#
+# .env (opcionais):
+#   PASSAGEM_LEMBRETES=0           desliga os dois lembretes
+#   PASSAGEM_LEMBRETE_MIN=30       antecedência do lembrete de registrar
+#   PASSAGEM_LINK=https://...      endereço do sistema na mensagem
+#                                  (padrão: FRONTEND_ORIGIN)
+
+JANELA_ENTRADA_MIN = 30  # o aviso de entrada pode sair até 30 min depois do início
+
+
+def _plantonistas(db: Session) -> list[Colaborador]:
+    from app.ferramentas.models import FtAcesso
+    from app.ferramentas.seguranca import normalizar_permissoes
+    ids = []
+    for a in db.query(FtAcesso).all():
+        perms = normalizar_permissoes(a.permissoes)
+        if "passagem.registrar" in perms and "passagem.gerenciar" not in perms:
+            ids.append(a.colaborador_id)
+    if not ids:
+        return []
+    return db.query(Colaborador).filter(
+        Colaborador.id.in_(ids), Colaborador.status == "ativo",
+        Colaborador.role.in_(("colaborador", "supervisor", "ferramentas")),
+    ).all()
+
+
+def _hm(hhmm: str) -> int:
+    return int(hhmm[:2]) * 60 + int(hhmm[3:5])
+
+
+def _turnos_da_pessoa(db: Session, c: Colaborador, dia: date) -> list[tuple[datetime, datetime, str, str]]:
+    """Plantões que COMEÇAM em `dia`: [(início, fim, "07:00", "19:00")], em horário local."""
+    from app.api.routes_avisos import _esta_de_servico
+    from app.db.models import Plantao
+
+    horarios = [(p.horario_inicio, p.horario_fim) for p in db.query(Plantao).filter(Plantao.colaborador_id == c.id, Plantao.data == dia).all()]
+    if not horarios and c.horario_inicio and c.horario_fim:
+        horarios = [(c.horario_inicio, c.horario_fim)]
+    turnos = []
+    for ini, fim in horarios:
+        try:
+            if not _esta_de_servico(db, c, dia, _hm(ini)):
+                continue
+            inicio = datetime.combine(dia, datetime.strptime(ini, "%H:%M").time(), tzinfo=FUSO)
+            final = datetime.combine(dia, datetime.strptime(fim, "%H:%M").time(), tzinfo=FUSO)
+        except (ValueError, TypeError):
+            continue
+        if final <= inicio:
+            final += timedelta(days=1)  # vira a noite (19:00–07:00)
+        turnos.append((inicio, final, ini, fim))
+    return turnos
+
+
+def _link() -> str:
+    base = (os.getenv("PASSAGEM_LINK") or settings.frontend_origin or "").rstrip("/")
+    return f"{base}/#ft-passagem" if base else ""
+
+
+def _ja_avisado(db: Session, colaborador_id: str, tipo: str, dia: date) -> bool:
+    """Um aviso de cada tipo por pessoa por plantão (data = dia em que o plantão começou)."""
+    from app.db.models import Aviso
+    return db.query(Aviso).filter(Aviso.colaborador_id == colaborador_id, Aviso.tipo == tipo, Aviso.data == dia).first() is not None
+
+
+def _mensagem_entrada(db: Session, c: Colaborador, fim_txt: str) -> str:
+    q = db.query(FtPendencia, FtPassagem).join(FtPassagem, FtPendencia.passagem_id == FtPassagem.id).filter(FtPendencia.status == "aberta")
+    if c.equipe:
+        q = q.filter(or_(FtPassagem.equipe == c.equipe, FtPassagem.equipe.is_(None)))
+    abertas = [p for p, _ in q.all()]
+    ultima_q = db.query(FtPassagem)
+    if c.equipe:
+        ultima_q = ultima_q.filter(FtPassagem.equipe == c.equipe)
+    recentes = ultima_q.order_by(FtPassagem.data.desc()).limit(6).all()
+    ultima = max(recentes, key=_ordem) if recentes else None
+
+    linhas = [f"Bom plantão, {c.nome.split()[0]}! (até {fim_txt})"]
+    if ultima and ultima.autor_id != c.id:
+        autor = _nomes(db, {ultima.autor_id}).get(ultima.autor_id, "—")
+        situacao = "aguardando sua ciência" if not ultima.ciencia_em else "já com ciência"
+        linhas.append(f"Última passagem: {autor} · {TURNO.get(ultima.turno, ultima.turno).lower()} {ultima.data.strftime('%d/%m')} — {situacao}.")
+        if ultima.recados:
+            linhas.append(f"Recado: {ultima.recados[:300]}")
+    elif not ultima:
+        linhas.append("Ainda não há passagem registrada.")
+
+    if not abertas:
+        linhas.append("✅ Nenhuma pendência aberta.")
+    else:
+        alta = sum(1 for p in abertas if p.prioridade == "alta")
+        prox = [p for p in abertas if p.para == "proximo_plantao"]
+        partes = [f"{len(abertas)} pendência(s) aberta(s)"]
+        if prox:
+            partes.append(f"{len(prox)} para este plantão")
+        if alta:
+            partes.append(f"{alta} de prioridade alta")
+        linhas.append("📋 " + " · ".join(partes) + ":")
+        ordem = sorted(abertas, key=lambda p: (p.prioridade != "alta", p.para != "proximo_plantao", p.criada_em or datetime.min))
+        for p in ordem[:6]:
+            ref = f"{p.referencia} — " if p.referencia else ""
+            marca = "❗ " if p.prioridade == "alta" else "• "
+            linhas.append(f"{marca}[{CATEGORIAS.get(p.categoria, p.categoria)}] {ref}{p.descricao[:140]}")
+        if len(ordem) > 6:
+            linhas.append(f"…e mais {len(ordem) - 6}.")
+    if _link():
+        linhas.append(f"Ver e dar ciência: {_link()}")
+    return "\n".join(linhas)
+
+
+def gerar_lembretes_passagem(db: Session, agora: datetime | None = None) -> int:
+    from app.db.models import Aviso
+
+    if os.getenv("PASSAGEM_LEMBRETES", "1").strip() in ("0", "false", "nao", "não"):
+        return 0
+    try:
+        antecedencia = max(5, min(180, int(os.getenv("PASSAGEM_LEMBRETE_MIN", "30"))))
+    except ValueError:
+        antecedencia = 30
+    agora = agora or datetime.now(FUSO)
+    hoje = agora.date()
+    criados = 0
+    for c in _plantonistas(db):
+        for dia in (hoje - timedelta(days=1), hoje):
+            for inicio, fim, ini_txt, fim_txt in _turnos_da_pessoa(db, c, dia):
+                marca = f"({ini_txt}–{fim_txt})"
+
+                # 1) 30 min antes de terminar: registrar a passagem
+                if fim - timedelta(minutes=antecedencia) <= agora < fim and not _ja_avisado(db, c.id, "passagem_registrar", dia):
+                    turno = "noturno" if inicio.hour >= 12 else "diurno"
+                    enviada = db.query(FtPassagem).filter(FtPassagem.autor_id == c.id, FtPassagem.data == dia, FtPassagem.turno == turno).first()
+                    if not enviada:
+                        texto = f"📝 Seu plantão {marca} termina às {fim_txt}. Registre a passagem de plantão: o que houve e o que ficou pendente (PRTG, IXC, Zammad, Projetos)."
+                        if _link():
+                            texto += f"\n{_link()}"
+                        db.add(Aviso(colaborador_id=c.id, tipo="passagem_registrar", data=dia, canais=[], lido=True,
+                                     lido_via="automatico", lido_em=datetime.utcnow(), mensagem=texto))
+                        criados += 1
+
+                # 2) na entrada: o que está pendente (também vira pop-up no sistema)
+                if inicio <= agora < inicio + timedelta(minutes=JANELA_ENTRADA_MIN) and not _ja_avisado(db, c.id, "passagem_entrada", dia):
+                    texto = _mensagem_entrada(db, c, fim_txt)
+                    db.add(Aviso(colaborador_id=c.id, tipo="passagem_entrada", data=dia, canais=[], mensagem=texto))
+                    criados += 1
+    if criados:
+        db.commit()
+    return criados
