@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Solicitar from "./Solicitar";
 import { api } from "../api/client";
 import { Pill } from "../components/UI";
 import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, linkNvr, dataHora, kb, baixarImagem, lerArquivo, reduzirImagem } from "./util";
@@ -32,6 +33,7 @@ export default function CameraFicha({ cameraId, onEditar, onSubstituir, onMudou,
   const [carregandoFoto, setCarregandoFoto] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [senhas, setSenhas] = useState({});
+  const [pedido, setPedido] = useState(false);
   const timers = useRef({});
 
   const carregar = () => {
@@ -130,10 +132,14 @@ export default function CameraFicha({ cameraId, onEditar, onSubstituir, onMudou,
           {cam.pode_editar && <button className="btn btn-ghost btn-sm" onClick={() => onEditar(cam.id)}>Editar</button>}
           {cam.pode_editar && cam.tipo === "nvr" && onSubstituir && <button className="btn btn-ghost btn-sm" onClick={() => onSubstituir(cam.id)} title="A câmera do canal foi trocada">Substituir câmera</button>}
           {cam.pode_excluir && <button className="btn btn-danger btn-sm" onClick={excluir}>{cam.tipo === "nvr" ? "Liberar canal" : "Excluir"}</button>}
+          {cam.pode_solicitar && !cam.pode_editar && <button className="btn btn-primary btn-sm" onClick={() => setPedido(true)}>Solicitar alteração</button>}
         </div>
       </div>
 
       <div className="ft-ficha-corpo">
+        {cam.solicitacoes_abertas > 0 && (
+          <div className="warn-box" style={{ margin: 0 }}>{cam.solicitacoes_abertas === 1 ? "1 solicitação de técnico" : `${cam.solicitacoes_abertas} solicitações de técnicos`} em aberto para esta câmera.</div>
+        )}
         {cam.tem_foto ? (
           <div>
             <div className="ft-foto">
@@ -189,6 +195,10 @@ export default function CameraFicha({ cameraId, onEditar, onSubstituir, onMudou,
           </Linha>
         </div>
       </div>
+      {pedido && (
+        <Solicitar camera={cam} showToast={showToast} onFechar={() => setPedido(false)}
+          onEnviado={() => { setPedido(false); carregar(); }} />
+      )}
     </div>
   );
 }

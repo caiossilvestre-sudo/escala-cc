@@ -17,20 +17,22 @@ PERMISSOES = {
     "doc.senhas": "Documentação · ver senhas dos gravadores",
     "doc.excluir": "Documentação · excluir câmeras LifeGuard",
     "nvr.gerenciar": "Gravadores · incluir, editar, desativar, excluir e liberar canais",
-    "passagem.registrar": "Passagem de plantão · registrar, dar ciência e baixar pendências",
-    "passagem.gerenciar": "Passagem de plantão · painel do gestor, editar e excluir qualquer registro",
+    "doc.solicitar": "Documentação · solicitar alterações e enviar fotos para o N2 (técnico)",
+    "doc.tratar": "Solicitações · tratar pedidos dos técnicos (N2)",
+    "ft.somente": "Menu só com Ferramentas (técnico: não vê escala, férias etc.)",
     "ft.admin": "Gerenciar permissões",
 }
 # Atalhos da tela de permissões (só preenchem as caixinhas)
 PRESETS = {
     "n1": ["doc.ver", "doc.editar"],
-    "n2": ["doc.ver", "doc.editar", "doc.senhas"],
-    "leitura": ["doc.ver"],
-    "plantonista": ["passagem.registrar"],
+    "n2": ["doc.ver", "doc.editar", "doc.senhas", "doc.tratar"],
+    "tecnico": ["doc.ver", "doc.solicitar", "ft.somente"],
 }
 # Quem tem uma permissão de Documentação precisa conseguir consultar
+# Permissões que não fazem sentido para o admin do Escala (que tem todo o resto)
+SO_PARA_TECNICO = {"ft.somente"}
 IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver",
-           "passagem.gerenciar": "passagem.registrar"}
+           "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "ft.somente": "doc.ver"}
 
 
 def normalizar_permissoes(lista) -> list[str]:
@@ -46,7 +48,7 @@ def normalizar_permissoes(lista) -> list[str]:
 def permissoes_do(db: Session, user: Colaborador) -> set[str]:
     """Admin do Escala tem tudo. Os demais: o que estiver em ft_acessos."""
     if user.role == "admin":
-        return set(PERMISSOES)
+        return set(PERMISSOES) - SO_PARA_TECNICO
     a = db.get(FtAcesso, user.id)
     return set(normalizar_permissoes(a.permissoes)) if a else set()
 

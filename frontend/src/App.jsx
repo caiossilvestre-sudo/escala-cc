@@ -7,7 +7,6 @@ import Dashboard from "./pages/Dashboard";
 import RelatorioEquipe from "./pages/RelatorioEquipe";
 import CronogramaAdmin from "./pages/CronogramaAdmin";
 import Colaboradores from "./pages/Colaboradores";
-import Intervalos from "./pages/Intervalos";
 import Plantoes from "./pages/Plantoes";
 import Feriados from "./pages/Feriados";
 import Aprovacoes from "./pages/Aprovacoes";
@@ -18,7 +17,7 @@ import MeusPlantoes from "./pages/MeusPlantoes";
 import CronogramaEquipe from "./pages/CronogramaEquipe";
 import SolicitarFolga from "./pages/SolicitarFolga";
 import ChangePassword from "./pages/ChangePassword";
-import { FerramentasPagina, MenuFerramentas, PAGINAS_LIFEGUARD, useFerramentasAcesso } from "./ferramentas";
+import { FerramentasPagina, MenuFerramentas, useFerramentasAcesso } from "./ferramentas";
 
 const NAV_ADMIN = [
   { grupo: "Visão geral", itens: [
@@ -35,7 +34,7 @@ const NAV_ADMIN = [
     { id: "ferias", label: "Férias" },
     { id: "atestados", label: "Atestados" },
   ] },
-  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }, { id: "intervalos", label: "Intervalos" }] },
+  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
   { grupo: "Comunicação", itens: [{ id: "avisos", label: "Avisos" }] },
 ];
 // Supervisor: só o operacional do próprio setor. Sem Feriados (política da
@@ -58,7 +57,7 @@ const NAV_SUPERVISOR = [
     { id: "ferias", label: "Férias" },
     { id: "atestados", label: "Atestados" },
   ] },
-  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }, { id: "intervalos", label: "Intervalos" }] },
+  { grupo: "Gestão", itens: [{ id: "colaboradores", label: "Colaboradores" }] },
   { grupo: "Minhas solicitações", itens: [
     { id: "solicitar-folga", label: "Solicitar folga" },
     { id: "minhas-ferias", label: "Minhas férias" },
@@ -77,8 +76,8 @@ const NAV_COLAB = [
   { grupo: "Comunicação", itens: [{ id: "avisos", label: "Painel de avisos" }] },
 ];
 
-const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador", ferramentas: "Somente Ferramentas" };
-const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰", passagem_entrada: "📋" };
+const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador" };
+const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰" };
 
 /** Mostra os avisos ainda não lidos assim que a pessoa loga — em vez de ela
  * precisar lembrar de abrir a aba "Avisos". Fica fora do <fieldset> pra
@@ -169,7 +168,6 @@ function Shell() {
   const isAdmin = user?.role === "admin";
   const isViewer = user?.role === "visualizador";
   const isSupervisor = user?.role === "supervisor";
-  const isFerr = user?.role === "ferramentas"; // só o módulo Ferramentas, sem nada da escala
   // Visualizador enxerga as mesmas telas do admin — só não consegue submeter nada.
   const showAdminPages = isAdmin || isViewer;
 
@@ -187,20 +185,22 @@ function Shell() {
   if (loading) return null;
   if (!user) return <Login />;
 
-  const navBase = isFerr ? [] : showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
+  // Técnico (permissão "Menu só com Ferramentas"): não vê escala, férias etc.
+  const somenteFerramentas = !showAdminPages && !isSupervisor && ft.tem("ft.somente");
+  const navBase = somenteFerramentas ? [] : showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
   const nav = navBase;
-  const primeiroItem = isFerr ? PAGINAS_LIFEGUARD.find((p) => ft.tem(p.permissao))?.id : nav[0]?.itens[0]?.id;
+  const primeiroItem = nav[0]?.itens[0]?.id || ft.inicial;
   // Aba do endereço que não existe para este perfil -> página inicial
-  const abaValida = tab && (tab === "senha" || tab.startsWith("lg-") || tab.startsWith("ft-") || nav.some((s) => s.itens.some((i) => i.id === tab)));
-  const activeTab = abaValida ? tab : (primeiroItem || (isFerr ? "senha" : "dashboard"));
+  const abaValida = tab && (tab === "senha" || tab.startsWith("lg-") || nav.some((s) => s.itens.some((i) => i.id === tab)));
+  const activeTab = abaValida ? tab : (primeiroItem || "dashboard");
 
   return (
     <div className="app-shell">
-      {!isFerr && <AvisosPopup userId={user.colaborador_id} />}
+      <AvisosPopup userId={user.colaborador_id} />
       <aside className="sidebar">
         <div className="sidebar-logo">
           <div className="mark">ST</div>
-          <div><div className="name display">Suporte Técnico</div><div className="sub">Sistemas</div></div>
+          <div><div className="name display">Escala Suporte Técnico</div><div className="sub">Sistema de escalas</div></div>
         </div>
         <div className="sidebar-user">
           <div className="name">{user.nome}</div>
@@ -222,8 +222,8 @@ function Shell() {
             {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
             {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
             {isSupervisor && `Você gerencia colaboradores, plantões, folgas, férias e atestados — só ${user.equipes_gerenciadas?.length > 1 ? `dos setores: ${user.equipes_gerenciadas.join(", ")}` : `do seu setor (${user.equipe})`}. Em "Minhas solicitações" você também pede sua própria folga (sindicato) e férias.`}
-            {isFerr && "Você tem acesso apenas às Ferramentas liberadas para o seu usuário."}
-            {!isAdmin && !isViewer && !isSupervisor && !isFerr && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
+            {!isAdmin && !isViewer && !isSupervisor && !somenteFerramentas && "Você consulta seus plantões e solicita folgas/férias — a aprovação é do admin."}
+            {somenteFerramentas && "Você consulta a documentação das câmeras e envia pedidos de alteração para o N2."}
           </div>
           <button className={activeTab === "senha" ? "active" : ""} onClick={() => setTab("senha")}>Trocar senha</button>
           <button onClick={logout} className="sair">Sair</button>
@@ -248,7 +248,6 @@ function Shell() {
           {activeTab === "relatorio" && (showAdminPages || isSupervisor) && <RelatorioEquipe />}
           {activeTab === "cronograma" && (showAdminPages || isSupervisor) && <CronogramaAdmin />}
           {activeTab === "colaboradores" && (showAdminPages || isSupervisor) && <Colaboradores user={user} />}
-          {activeTab === "intervalos" && (showAdminPages || isSupervisor) && <Intervalos user={user} />}
           {activeTab === "plantoes" && (showAdminPages || isSupervisor) && <Plantoes />}
           {activeTab === "feriados" && showAdminPages && <Feriados />}
           {activeTab === "aprovacoes" && (showAdminPages || isSupervisor) && <Aprovacoes />}
@@ -261,9 +260,6 @@ function Shell() {
           {activeTab === "minhas-ferias" && isSupervisor && <MinhasFerias user={user} />}
           {activeTab === "senha" && <ChangePassword />}
           <FerramentasPagina tab={activeTab} acesso={ft} />
-          {isFerr && !PAGINAS_LIFEGUARD.some((p) => ft.tem(p.permissao)) && activeTab !== "senha" && (
-            <div className="content"><div className="info-box">Nenhuma ferramenta foi liberada para o seu usuário ainda. Peça a um administrador.</div></div>
-          )}
         </fieldset>
       </main>
     </div>

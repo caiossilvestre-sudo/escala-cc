@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Pill, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
 import { useToast, useConfirm } from "../lib/hooks";
-import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, useAlturaRestante, num } from "./util";
+import { TIPO_INFO, STATUS_INFO, tipoDe, origemTexto, useAlturaRestante, useCelular, num } from "./util";
+import DocCelular from "./DocCelular";
 import CameraFicha from "./CameraFicha";
 import CameraForm from "./CameraForm";
 import Permissoes from "./Permissoes";
@@ -13,6 +14,13 @@ const STATUS = [["", "Situação: todas"], ["online", "Online"], ["offline", "Of
 const POR_PAGINA = 50;
 /** LifeGuard · Documentação — página principal do módulo Ferramentas. */
 export default function Documentacao({ acesso }) {
+  // No celular a Documentação vira uma tela própria (cartões, ficha e pedido ao N2)
+  const celular = useCelular();
+  if (celular) return <DocCelular acesso={acesso} />;
+  return <DocumentacaoComputador acesso={acesso} />;
+}
+
+function DocumentacaoComputador({ acesso }) {
   const { toast, showToast } = useToast();
   const { confirm, confirmState, resolveConfirm } = useConfirm();
   const [modo, setModo] = useState({ tela: "lista" }); // lista | nova | editar | permissoes | importar

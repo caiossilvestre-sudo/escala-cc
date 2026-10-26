@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 // Utilitários do módulo Ferramentas (LifeGuard · Documentação).
 
@@ -106,4 +106,17 @@ export function useAlturaRestante() {
     return () => window.removeEventListener("resize", calcular);
   }, []);
   return [ref, altura];
+}
+
+/** true quando a tela é de celular (largura até 760 px). */
+export function useCelular(limite = 760) {
+  const consulta = `(max-width: ${limite}px)`;
+  const [celular, setCelular] = useState(() => typeof window !== "undefined" && window.matchMedia(consulta).matches);
+  useEffect(() => {
+    const m = window.matchMedia(consulta);
+    const f = () => setCelular(m.matches);
+    m.addEventListener("change", f);
+    return () => m.removeEventListener("change", f);
+  }, [consulta]);
+  return celular;
 }

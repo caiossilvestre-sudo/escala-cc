@@ -6,7 +6,7 @@
 //   <FerramentasPagina tab={activeTab} acesso={ft} />                  (dentro do <main>)
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { PAGINAS_LIFEGUARD } from "./paginas";
+import { PAGINAS_LIFEGUARD, paginaLiberada } from "./paginas";
 
 export { PAGINAS_LIFEGUARD };
 export { default as MenuFerramentas } from "./MenuFerramentas";
@@ -19,12 +19,14 @@ export function useFerramentasAcesso(userId) {
     api.get("/ferramentas/me").then((r) => setPermissoes(r.permissoes || [])).catch(() => setPermissoes([]));
   }, [userId]);
   const tem = (p) => permissoes.includes(p);
-  return { permissoes, tem };
+  // primeira página liberada (para quem só vê Ferramentas)
+  const inicial = PAGINAS_LIFEGUARD.find((p) => paginaLiberada(p, { tem }))?.id || null;
+  return { permissoes, tem, inicial };
 }
 
 /** Renderiza a página de Ferramentas da aba ativa (ou nada, se a aba não é do módulo). */
 export function FerramentasPagina({ tab, acesso }) {
   const pagina = PAGINAS_LIFEGUARD.find((p) => p.id === tab);
-  if (!pagina || !acesso.tem(pagina.permissao)) return null;
+  if (!pagina || !paginaLiberada(pagina, acesso)) return null;
   return pagina.render(acesso);
 }

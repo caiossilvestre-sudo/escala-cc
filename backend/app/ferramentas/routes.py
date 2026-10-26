@@ -16,17 +16,17 @@ from app.core.rate_limit import limiter
 from app.db.models import Colaborador
 from app.db.session import get_db
 from app.ferramentas import fotos, normalizar as nz
-from app.ferramentas.models import FtAcesso, FtCamera, FtCredencial, FtGravador
+from app.ferramentas.models import FtAcesso, FtCamera, FtCredencial, FtGravador, FtSolicitacao
 from app.ferramentas.schemas import (
     CameraIn, CameraLoteIn, CameraPatch, CameraResumo, CredencialIn, FotoIn, FotoLoteIn, GravadorIn, GravadorPatch,
-    MapearFotosIn, PermissaoIn,
+    MapearFotosIn, PermissaoIn, SolicitacaoIn, TratarSolicitacaoIn,
 )
 from app.ferramentas.seguranca import (
-    PERMISSOES, PRESETS, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
+    PERMISSOES, PRESETS, SO_PARA_TECNICO, cifrar, decifrar, exigir, normalizar_permissoes, permissoes_do,
 )
 
-VER, EDITAR, SENHAS, EXCLUIR, GERENCIAR, ADMIN = (exigir(p) for p in (
-    "doc.ver", "doc.editar", "doc.senhas", "doc.excluir", "nvr.gerenciar", "ft.admin"))
+VER, EDITAR, SENHAS, EXCLUIR, GERENCIAR, TRATAR, ADMIN = (exigir(p) for p in (
+    "doc.ver", "doc.editar", "doc.senhas", "doc.excluir", "nvr.gerenciar", "doc.tratar", "ft.admin"))
 
 # Câmera de NVR desativado (retirado de operação) não aparece na Documentação.
 # Os dados continuam no banco; reativando o gravador, tudo volta.
@@ -361,6 +361,9 @@ def detalhe_camera(camera_id: str, db: Session = Depends(get_db), user=Depends(V
         # gravadores pode liberar o canal. Câmera LifeGuard: doc.excluir.
         "pode_excluir": ("nvr.gerenciar" if cam.tipo == "nvr" else "doc.excluir") in user.ft_permissoes,
         "pode_gerenciar_nvr": "nvr.gerenciar" in user.ft_permissoes,
+        "pode_solicitar": bool({"doc.solicitar", "doc.editar"} & user.ft_permissoes),
+        "solicitacoes_abertas": db.query(FtSolicitacao).filter(
+            FtSolicitacao.camera_id == cam.id, FtSolicitacao.status == "aberta").count(),
     }
 
 
@@ -465,6 +468,8 @@ def excluir_camera(camera_id: str, request: Request, db: Session = Depends(get_d
                             if cam.tipo == "nvr" else f"Sem permissão para: {PERMISSOES[precisa]}.")
     nome, arquivo = cam.nome, cam.foto_arquivo
     db.query(FtCredencial).filter(FtCredencial.camera_id == cam.id).delete()
+    # pedidos dos técnicos ficam no histórico, só sem o vínculo com a câmera
+    db.query(FtSolicitacao).filter(FtSolicitacao.camera_id == cam.id).update({"camera_id": None}, synchronize_session=False)
     db.delete(cam)
     db.commit()
     fotos.apagar(arquivo)
@@ -664,6 +669,126 @@ def revelar_senha(cred_id: str, request: Request, db: Session = Depends(get_db),
     return {"senha": senha}
 
 
+# ------------------------------------------------- solicitações dos técnicos
+
+TIPO_SOLICITACAO = {"dados": "Dados errados", "trocada": "Câmera trocada", "removida": "Câmera retirada",
+                    "foto": "Foto nova", "outro": "Outro"}
+
+
+def _sol_dict(s: FtSolicitacao, nomes: dict, cams: dict) -> dict:
+    cam = cams.get(s.camera_id)
+    return {
+        "id": s.id, "camera_id": s.camera_id, "camera_nome": cam.nome if cam else s.camera_nome,
+        "camera_local": cam.descricao_local if cam else None, "cliente": cam.nome_cliente if cam else None,
+        "tipo": s.tipo, "tipo_label": TIPO_SOLICITACAO.get(s.tipo, s.tipo), "texto": s.texto,
+        "tem_foto": bool(s.foto_arquivo), "status": s.status, "resposta": s.resposta,
+        "criado_em": s.criado_em, "criado_por_nome": nomes.get(s.criado_por_id),
+        "tratado_em": s.tratado_em, "tratado_por_nome": nomes.get(s.tratado_por_id),
+    }
+
+
+@router.post("/solicitacoes", status_code=201)
+@limiter.limit("20/minute")
+def criar_solicitacao(body: SolicitacaoIn, request: Request, db: Session = Depends(get_db), user=Depends(VER)):
+    """Técnico (ou N1) pede alteração / manda foto. Nada muda na documentação:
+    o pedido fica aberto para o N2 tratar."""
+    if not ({"doc.solicitar", "doc.editar"} & user.ft_permissoes):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Sem permissão para solicitar alterações.")
+    cam = db.get(FtCamera, body.camera_id)
+    if not cam:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Câmera não encontrada.")
+    texto = nz.texto(body.texto)
+    if not texto and not body.imagem_base64:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Escreva o que precisa ser alterado ou anexe uma foto.")
+    sol = FtSolicitacao(camera_id=cam.id, camera_nome=cam.nome, tipo=body.tipo, texto=texto, criado_por_id=user.id)
+    db.add(sol)
+    db.flush()
+    if body.imagem_base64:
+        jpeg, _, _ = fotos.normalizar_imagem(fotos.decodificar_base64(body.imagem_base64))
+        sol.foto_arquivo = fotos.salvar(f"sol-{sol.id}", jpeg)
+    db.commit()
+    log_action(db, request, user, "ft_criar_solicitacao", "ft_solicitacao", sol.id,
+               {"camera_id": cam.id, "tipo": sol.tipo, "com_foto": bool(sol.foto_arquivo)})
+    return {"id": sol.id}
+
+
+@router.get("/solicitacoes")
+def listar_solicitacoes(
+    status_: str = Query(default="aberta", alias="status"), camera_id: str | None = None,
+    db: Session = Depends(get_db), user=Depends(VER),
+):
+    """N2 (doc.tratar) vê todas; os demais só as que eles mesmos enviaram."""
+    q = db.query(FtSolicitacao)
+    if "doc.tratar" not in user.ft_permissoes:
+        q = q.filter(FtSolicitacao.criado_por_id == user.id)
+    if status_ in ("aberta", "resolvida", "recusada"):
+        q = q.filter(FtSolicitacao.status == status_)
+    if camera_id:
+        q = q.filter(FtSolicitacao.camera_id == camera_id)
+    ordem = FtSolicitacao.criado_em.asc() if status_ == "aberta" else FtSolicitacao.criado_em.desc()
+    sols = q.order_by(ordem).limit(300).all()
+    nomes = _nomes(db, {s.criado_por_id for s in sols} | {s.tratado_por_id for s in sols})
+    ids = {s.camera_id for s in sols if s.camera_id}
+    cams = {c.id: c for c in db.query(FtCamera).filter(FtCamera.id.in_(ids)).all()} if ids else {}
+    return [_sol_dict(s, nomes, cams) for s in sols]
+
+
+@router.get("/solicitacoes-contagem")
+def contar_solicitacoes(db: Session = Depends(get_db), user=Depends(VER)):
+    """Número para o contador do menu (só para quem trata)."""
+    if "doc.tratar" not in user.ft_permissoes:
+        return {"abertas": 0}
+    return {"abertas": db.query(FtSolicitacao).filter(FtSolicitacao.status == "aberta").count()}
+
+
+@router.get("/solicitacoes/{sol_id}/foto")
+def foto_solicitacao(sol_id: str, db: Session = Depends(get_db), user=Depends(VER)):
+    s = db.get(FtSolicitacao, sol_id)
+    if not s or ("doc.tratar" not in user.ft_permissoes and s.criado_por_id != user.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação não encontrada.")
+    dado = fotos.ler_base64(s.foto_arquivo) if s.foto_arquivo else None
+    if not dado:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Esta solicitação não tem foto.")
+    return {"imagem_base64": dado, "mime": "image/jpeg"}
+
+
+def _tratar(sol_id: str, novo_status: str, body: TratarSolicitacaoIn, request: Request, db: Session, user):
+    s = db.get(FtSolicitacao, sol_id)
+    if not s:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitação não encontrada.")
+    if s.status != "aberta":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esta solicitação já foi tratada.")
+    foto_aplicada = False
+    if novo_status == "resolvida" and body.usar_foto:
+        cam = db.get(FtCamera, s.camera_id) if s.camera_id else None
+        jpeg = fotos.ler_bytes(s.foto_arquivo) if s.foto_arquivo else None
+        if not cam or not jpeg:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Não há foto ou câmera para aplicar.")
+        _gravar_foto(cam, jpeg, user)
+        cam.foto_por_id = s.criado_por_id or user.id  # crédito para quem tirou a foto
+        foto_aplicada = True
+    s.status = novo_status
+    s.resposta = nz.texto(body.resposta)
+    s.tratado_por_id = user.id
+    s.tratado_em = datetime.utcnow()
+    db.commit()
+    log_action(db, request, user, f"ft_solicitacao_{novo_status}", "ft_solicitacao", s.id,
+               {"camera_id": s.camera_id, "tipo": s.tipo, "foto_aplicada": foto_aplicada})
+    return {"ok": True, "foto_aplicada": foto_aplicada}
+
+
+@router.post("/solicitacoes/{sol_id}/resolver")
+def resolver_solicitacao(sol_id: str, body: TratarSolicitacaoIn, request: Request, db: Session = Depends(get_db), user=Depends(TRATAR)):
+    return _tratar(sol_id, "resolvida", body, request, db, user)
+
+
+@router.post("/solicitacoes/{sol_id}/recusar")
+def recusar_solicitacao(sol_id: str, body: TratarSolicitacaoIn, request: Request, db: Session = Depends(get_db), user=Depends(TRATAR)):
+    if not nz.texto(body.resposta):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Escreva o motivo da recusa — o técnico vai ver.")
+    return _tratar(sol_id, "recusada", body, request, db, user)
+
+
 # --------------------------------------------------------------- permissões
 
 @router.get("/permissoes")
@@ -675,7 +800,7 @@ def listar_permissoes(db: Session = Depends(get_db), user=Depends(ADMIN)):
         "presets": PRESETS,
         "pessoas": [{
             "colaborador_id": p.id, "nome": p.nome, "equipe": p.equipe, "role": p.role,
-            "permissoes": list(PERMISSOES) if p.role == "admin" else acessos.get(p.id, []),
+            "permissoes": [k for k in PERMISSOES if k not in SO_PARA_TECNICO] if p.role == "admin" else acessos.get(p.id, []),
             "fixo": p.role == "admin",  # admin do Escala sempre tem tudo
         } for p in pessoas],
     }
@@ -702,10 +827,3 @@ def definir_permissao(body: PermissaoIn, request: Request, db: Session = Depends
     db.commit()
     log_action(db, request, user, "ft_permissoes", "colaborador", alvo.id, {"antes": antes, "depois": novas})
     return {"ok": True, "permissoes": novas}
-
-
-# ---------------------------------------------------- passagem de plantão
-# Rotas em /ferramentas/passagem/... (mesmo prefixo já liberado no Nginx).
-from app.ferramentas.routes_passagem import router as _passagem_router  # noqa: E402
-
-router.include_router(_passagem_router)
