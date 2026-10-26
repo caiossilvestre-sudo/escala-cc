@@ -1,4 +1,5 @@
-"""Módulo Ferramentas do Escala — LifeGuard · Documentação de câmeras.
+"""Módulo Ferramentas do Escala — LifeGuard · Documentação de câmeras e
+Passagem de plantão (12x36).
 
 Pasta isolada: tabelas próprias (ft_*), rotas próprias (/ferramentas) e
 permissão própria (N1/N2/Admin). Para ligar no Escala basta, no main.py:

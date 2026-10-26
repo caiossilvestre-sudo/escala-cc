@@ -702,3 +702,10 @@ def definir_permissao(body: PermissaoIn, request: Request, db: Session = Depends
     db.commit()
     log_action(db, request, user, "ft_permissoes", "colaborador", alvo.id, {"antes": antes, "depois": novas})
     return {"ok": True, "permissoes": novas}
+
+
+# ---------------------------------------------------- passagem de plantão
+# Rotas em /ferramentas/passagem/... (mesmo prefixo já liberado no Nginx).
+from app.ferramentas.routes_passagem import router as _passagem_router  # noqa: E402
+
+router.include_router(_passagem_router)
