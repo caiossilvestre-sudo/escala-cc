@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { CATEGORIAS, CAT, OBRIGATORIAS, PARA, TURNOS } from "./passagemUtil";
+import { AnexosEditor } from "./PassagemAnexos";
 
-const ITEM_VAZIO = { referencia: "", descricao: "", para: "horario_comercial", prioridade: "normal", link: "" };
+const ITEM_VAZIO = { referencia: "", descricao: "", para: "horario_comercial", prioridade: "normal", link: "", anexos: [] };
 const novaChave = () => `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 // Rascunho fica só no navegador de quem está preenchendo (dá para ir anotando
@@ -24,11 +25,13 @@ function estadoInicial(existente, sugestao) {
       data: existente.data, turno: existente.turno,
       horario_inicio: existente.horario_inicio, horario_fim: existente.horario_fim,
       resumo: existente.resumo || "", recados: existente.recados || "",
+      anexos: (existente.anexos || []).map((a) => ({ id: a.id, nome: a.nome })),
       sem_pendencia: existente.sem_pendencia || [],
       // pendência já resolvida não volta para o formulário (fica no histórico)
       itens: (existente.pendencias || []).filter((p) => p.status === "aberta").map((p) => ({
         chave: p.id, id: p.id, categoria: p.categoria, referencia: p.referencia || "", descricao: p.descricao,
         para: p.para, prioridade: p.prioridade, link: p.link || "",
+        anexos: (p.anexos || []).filter((a) => a.contexto === "pendencia").map((a) => ({ id: a.id, nome: a.nome })),
       })),
     };
   }
@@ -36,7 +39,7 @@ function estadoInicial(existente, sugestao) {
   return {
     data: s.data || new Date().toISOString().slice(0, 10), turno: s.turno || "diurno",
     horario_inicio: s.horario_inicio || "07:00", horario_fim: s.horario_fim || "19:00",
-    resumo: "", recados: "", sem_pendencia: [], itens: [],
+    resumo: "", recados: "", sem_pendencia: [], itens: [], anexos: [],
   };
 }
 
@@ -80,7 +83,8 @@ export default function PassagemForm({ existente, sugestao, abertasAnteriores = 
     const corpo = {
       data: f.data, turno: f.turno, horario_inicio: f.horario_inicio, horario_fim: f.horario_fim,
       resumo: f.resumo, recados: f.recados || null, sem_pendencia: f.sem_pendencia,
-      pendencias: f.itens.map(({ chave, ...i }) => ({ ...i, id: i.id || null, referencia: i.referencia || null, link: i.link || null })),
+      anexos: (f.anexos || []).map((a) => a.id),
+      pendencias: f.itens.map(({ chave, ...i }) => ({ ...i, id: i.id || null, referencia: i.referencia || null, link: i.link || null, anexos: (i.anexos || []).map((a) => a.id) })),
     };
     try {
       if (editando) await api.patch(`/ferramentas/passagem/${existente.id}`, corpo);
@@ -121,7 +125,7 @@ export default function PassagemForm({ existente, sugestao, abertasAnteriores = 
         </div>
       </div>
 
-      <div className="card pp-bloco">
+      <div className="card pp-bloco" data-colar>
         <div className="pp-bloco-titulo">O que houve no plantão <span className="obrig">obrigatório</span></div>
         <div className="field">
           <textarea
@@ -130,6 +134,7 @@ export default function PassagemForm({ existente, sugestao, abertasAnteriores = 
           />
         </div>
         {tentou && f.resumo.trim().length < 3 && <div className="pp-erro">Conte rapidamente como foi o plantão.</div>}
+        <AnexosEditor value={f.anexos || []} onChange={(v) => campo("anexos", v)} showToast={showToast} />
       </div>
 
       <div className="pp-cats">
@@ -159,7 +164,7 @@ export default function PassagemForm({ existente, sugestao, abertasAnteriores = 
               </div>
 
               {porCat[c.id].map((i) => (
-                <div key={i.chave} className="pp-item">
+                <div key={i.chave} className="pp-item" data-colar>
                   <div className="pp-item-grade">
                     <div className="field"><label>{CAT[c.id].ref}</label><input value={i.referencia} maxLength={200} onChange={(e) => mudarItem(i.chave, "referencia", e.target.value)} /></div>
                     <div className="field"><label>Ver em</label>
@@ -172,6 +177,7 @@ export default function PassagemForm({ existente, sugestao, abertasAnteriores = 
                     </div>
                     <div className="field"><label>Link (opcional)</label><input value={i.link} maxLength={500} placeholder="https://..." onChange={(e) => mudarItem(i.chave, "link", e.target.value)} /></div>
                   </div>
+                  <AnexosEditor value={i.anexos || []} onChange={(v) => mudarItem(i.chave, "anexos", v)} showToast={showToast} />
                   <div className="pp-item-rodape">
                     <label className="pp-nada"><input type="checkbox" checked={i.prioridade === "alta"} onChange={(e) => mudarItem(i.chave, "prioridade", e.target.checked ? "alta" : "normal")} /> Prioridade alta</label>
                     <button type="button" className="btn btn-danger btn-sm" onClick={() => tirarItem(i.chave)}>Remover</button>

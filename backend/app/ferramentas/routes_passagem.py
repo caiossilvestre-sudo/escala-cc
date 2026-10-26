@@ -17,8 +17,10 @@ Fluxo:
 E-mail opcional: com PASSAGEM_EMAIL_PARA no .env (lista separada por
 vírgula), cada passagem enviada vai por e-mail usando o SMTP do sistema.
 """
+import base64
 import os
 import smtplib
+from pathlib import Path
 from datetime import date, datetime, timedelta
 from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
@@ -32,8 +34,9 @@ from app.core.config import settings
 from app.core.deps import log_action
 from app.db.models import Colaborador
 from app.db.session import get_db
-from app.ferramentas.models import FtPassagem, FtPendencia
-from app.ferramentas.schemas import PassagemIn, PendenciaAcaoIn
+from app.ferramentas import fotos
+from app.ferramentas.models import FtAnexo, FtPassagem, FtPendencia
+from app.ferramentas.schemas import AnexoIn, PassagemIn, PendenciaAcaoIn
 from app.ferramentas.seguranca import exigir
 
 REGISTRAR, GERENCIAR = exigir("passagem.registrar"), exigir("passagem.gerenciar")
@@ -81,7 +84,73 @@ def _sugestao_turno() -> dict:
     return {"data": dia.isoformat(), "turno": "noturno", "horario_inicio": "19:00", "horario_fim": "07:00"}
 
 
-def _pend_dict(p: FtPendencia, nomes: dict, passagem: FtPassagem | None = None) -> dict:
+# ------------------------------------------------------------------ anexos
+
+LARGURA_PRINT = 1920   # print de tela precisa de mais resolução que a foto da câmera
+QUALIDADE_PRINT = 85
+SOLTO_MAX_HORAS = 24   # anexo que subiu e nunca foi vinculado é apagado depois disso
+
+
+def _pasta_anexos() -> Path:
+    pasta = fotos.pasta_fotos() / "passagem"
+    pasta.mkdir(parents=True, exist_ok=True)
+    return pasta
+
+
+def _arquivo(a: FtAnexo) -> Path:
+    nome = "".join(ch for ch in a.arquivo if ch.isalnum() or ch in "-.")
+    return _pasta_anexos() / nome
+
+
+def _apagar_anexos(db: Session, anexos):
+    for a in anexos:
+        try:
+            _arquivo(a).unlink(missing_ok=True)
+        except OSError:
+            pass
+        db.delete(a)
+
+
+def _mapa_anexos(db: Session, pend_ids) -> dict:
+    """{pendencia_id: [anexo, ...]} de uma vez só (evita uma consulta por pendência)."""
+    ids = [i for i in pend_ids if i]
+    mapa: dict = {}
+    if ids:
+        for a in db.query(FtAnexo).filter(FtAnexo.pendencia_id.in_(ids)).order_by(FtAnexo.criado_em).all():
+            mapa.setdefault(a.pendencia_id, []).append(a)
+    return mapa
+
+
+def _anexo_resumo(a: FtAnexo) -> dict:
+    return {"id": a.id, "nome": a.nome, "contexto": a.contexto, "bytes": a.bytes}
+
+
+def _vincular(db: Session, ids, user, *, passagem_id=None, pendencia_id=None, contexto: str) -> list[str]:
+    """Liga anexos soltos (enviados pela própria pessoa) a uma passagem/pendência.
+    Os que já estavam ligados no mesmo lugar ficam como estão."""
+    ligados = []
+    for aid in dict.fromkeys(ids or []):
+        a = db.get(FtAnexo, aid)
+        if not a:
+            continue
+        mesmo_lugar = a.contexto == contexto and a.passagem_id == passagem_id and a.pendencia_id == pendencia_id
+        if not mesmo_lugar:
+            if a.contexto is not None or a.criado_por_id != user.id:
+                continue  # não deixa "roubar" anexo de outro registro
+            a.passagem_id, a.pendencia_id, a.contexto = passagem_id, pendencia_id, contexto
+        ligados.append(a.id)
+    return ligados
+
+
+def _sincronizar(db: Session, ids, user, *, passagem_id=None, pendencia_id=None, contexto: str):
+    """Edição: o que ficou na lista é vinculado; o que saiu é apagado."""
+    manter = set(_vincular(db, ids, user, passagem_id=passagem_id, pendencia_id=pendencia_id, contexto=contexto))
+    q = db.query(FtAnexo).filter(FtAnexo.contexto == contexto)
+    q = q.filter(FtAnexo.pendencia_id == pendencia_id) if pendencia_id else q.filter(FtAnexo.passagem_id == passagem_id, FtAnexo.pendencia_id.is_(None))
+    _apagar_anexos(db, [a for a in q.all() if a.id not in manter])
+
+
+def _pend_dict(p: FtPendencia, nomes: dict, passagem: FtPassagem | None = None, anexos: dict | None = None) -> dict:
     return {
         "id": p.id, "passagem_id": p.passagem_id, "categoria": p.categoria,
         "referencia": p.referencia, "descricao": p.descricao, "para": p.para,
@@ -91,6 +160,7 @@ def _pend_dict(p: FtPendencia, nomes: dict, passagem: FtPassagem | None = None) 
         "resolucao": p.resolucao,
         "historico": [{**h, "por": nomes.get(h.get("por_id"))} for h in (p.historico or [])],
         "origem": {"data": passagem.data, "turno": passagem.turno, "autor": nomes.get(passagem.autor_id)} if passagem else None,
+        "anexos": [_anexo_resumo(a) for a in (anexos or {}).get(p.id, [])],
     }
 
 
@@ -105,6 +175,7 @@ def _ids_pessoas(pends) -> set:
 def _passagem_dict(db: Session, p: FtPassagem, completa: bool = True) -> dict:
     pends = db.query(FtPendencia).filter(FtPendencia.passagem_id == p.id).order_by(FtPendencia.criada_em).all()
     nomes = _nomes(db, {p.autor_id, p.ciencia_por_id} | _ids_pessoas(pends))
+    anexos = _mapa_anexos(db, [x.id for x in pends]) if completa else {}
     base = {
         "id": p.id, "autor_id": p.autor_id, "autor": nomes.get(p.autor_id), "equipe": p.equipe,
         "data": p.data, "turno": p.turno, "horario_inicio": p.horario_inicio, "horario_fim": p.horario_fim,
@@ -116,7 +187,9 @@ def _passagem_dict(db: Session, p: FtPassagem, completa: bool = True) -> dict:
         "qtd_alta": sum(1 for x in pends if x.status == "aberta" and x.prioridade == "alta"),
     }
     if completa:
-        base.update({"resumo": p.resumo, "recados": p.recados, "pendencias": [_pend_dict(x, nomes) for x in pends]})
+        proprios = db.query(FtAnexo).filter(FtAnexo.passagem_id == p.id, FtAnexo.contexto == "passagem").order_by(FtAnexo.criado_em).all()
+        base.update({"resumo": p.resumo, "recados": p.recados, "anexos": [_anexo_resumo(a) for a in proprios],
+                     "pendencias": [_pend_dict(x, nomes, anexos=anexos) for x in pends]})
     else:
         base["resumo_curto"] = (p.resumo or "")[:220]
     return base
@@ -149,20 +222,26 @@ def _aplicar_pendencias(db: Session, passagem: FtPassagem, body: PassagemIn, use
     existentes = {x.id: x for x in db.query(FtPendencia).filter(FtPendencia.passagem_id == passagem.id).all()} if editar else {}
     vistos = set()
     for item in body.pendencias:
-        dados = {k: _limpo(v) for k, v in item.model_dump(exclude={"id"}).items()}
+        dados = {k: (v if k == "anexos" else _limpo(v)) for k, v in item.model_dump(exclude={"id"}).items()}
         if dados["link"] and not dados["link"].lower().startswith(("http://", "https://")):
             dados["link"] = "https://" + dados["link"]
+        anexos = dados.pop("anexos", None) or []
         alvo = existentes.get(item.id) if item.id else None
         if alvo:
             vistos.add(alvo.id)
             for k, v in dados.items():
                 setattr(alvo, k, v)
+            _sincronizar(db, anexos, user, passagem_id=passagem.id, pendencia_id=alvo.id, contexto="pendencia")
         else:
-            db.add(FtPendencia(passagem_id=passagem.id, criada_por_id=user.id, historico=[], **dados))
+            nova = FtPendencia(passagem_id=passagem.id, criada_por_id=user.id, historico=[], **dados)
+            db.add(nova)
+            db.flush()
+            _vincular(db, anexos, user, passagem_id=passagem.id, pendencia_id=nova.id, contexto="pendencia")
     # na edição, item que saiu da lista é removido (só os ainda abertos;
     # pendência já resolvida fica como histórico)
     for pid, x in existentes.items():
         if pid not in vistos and x.status == "aberta":
+            _apagar_anexos(db, db.query(FtAnexo).filter(FtAnexo.pendencia_id == x.id).all())
             db.delete(x)
 
 
@@ -221,6 +300,7 @@ def painel(equipe: str | None = None, db: Session = Depends(get_db), user=Depend
     abertas.sort(key=lambda t: (t[0].prioridade != "alta", t[0].para != "proximo_plantao", t[0].criada_em or datetime.min))
     nomes = _nomes(db, _ids_pessoas([a for a, _ in abertas]) | {ps.autor_id for _, ps in abertas})
 
+    mapa = _mapa_anexos(db, [a.id for a, _ in abertas])
     contagem = {c: 0 for c in CATEGORIAS}
     for a, _ in abertas:
         contagem[a.categoria] = contagem.get(a.categoria, 0) + 1
@@ -231,7 +311,7 @@ def painel(equipe: str | None = None, db: Session = Depends(get_db), user=Depend
         "sugestao": _sugestao_turno(),
         "ultima": _passagem_dict(db, ultima) if ultima else None,
         "pode_dar_ciencia": bool(ultima and not ultima.ciencia_em and ultima.autor_id != user.id),
-        "pendencias": [_pend_dict(a, nomes, ps) for a, ps in abertas],
+        "pendencias": [_pend_dict(a, nomes, ps, mapa) for a, ps in abertas],
         "contagem": contagem,
         "gerencia": _gerencia(user),
         "eu": user.id,
@@ -285,7 +365,8 @@ def listar_pendencias(
     ordem = FtPendencia.resolvida_em.desc() if status_ == "resolvida" else FtPendencia.criada_em.desc()
     linhas = consulta.order_by(ordem).limit(limite).all()
     nomes = _nomes(db, _ids_pessoas([a for a, _ in linhas]) | {ps.autor_id for _, ps in linhas})
-    return [_pend_dict(a, nomes, ps) for a, ps in linhas]
+    mapa = _mapa_anexos(db, [a.id for a, _ in linhas])
+    return [_pend_dict(a, nomes, ps, mapa) for a, ps in linhas]
 
 
 @router.get("/indicadores")
@@ -339,6 +420,62 @@ def indicadores(dias: int = Query(30, ge=1, le=365), equipe: str | None = None, 
     }
 
 
+# ------------------------------------------------------------- anexos (rotas)
+
+@router.post("/anexos", status_code=201)
+def enviar_anexo(body: AnexoIn, request: Request, db: Session = Depends(get_db), user=Depends(REGISTRAR)):
+    """Sobe um print/imagem. Volta o id, que vai junto ao salvar a passagem,
+    a pendência, o comentário ou a baixa."""
+    from PIL import Image, UnidentifiedImageError
+    import io
+
+    bruto = fotos.decodificar_base64(body.imagem_base64)
+    try:
+        img = Image.open(io.BytesIO(bruto))
+        img.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "O arquivo enviado não é uma imagem válida.")
+    img = img.convert("RGB")
+    if img.width > LARGURA_PRINT:
+        img = img.resize((LARGURA_PRINT, round(img.height * LARGURA_PRINT / img.width)), Image.LANCZOS)
+    saida = io.BytesIO()
+    img.save(saida, format="JPEG", quality=QUALIDADE_PRINT, optimize=True)
+    jpeg = saida.getvalue()
+
+    # limpeza: anexos soltos antigos (subiram mas a passagem nunca foi enviada)
+    velhos = db.query(FtAnexo).filter(FtAnexo.contexto.is_(None), FtAnexo.criado_em < datetime.utcnow() - timedelta(hours=SOLTO_MAX_HORAS)).all()
+    if velhos:
+        _apagar_anexos(db, velhos)
+
+    a = FtAnexo(arquivo="", nome=(body.nome or "print").strip()[:200], bytes=len(jpeg),
+                largura=img.width, altura=img.height, criado_por_id=user.id)
+    db.add(a)
+    db.flush()
+    a.arquivo = f"{a.id}.jpg"
+    destino = _arquivo(a)
+    temp = destino.with_suffix(".tmp")
+    temp.write_bytes(jpeg)
+    temp.replace(destino)
+    db.commit()
+    return _anexo_resumo(a)
+
+
+@router.get("/anexos/{anexo_id}")
+def ver_anexo(anexo_id: str, db: Session = Depends(get_db), user=Depends(REGISTRAR)):
+    a = db.get(FtAnexo, anexo_id)
+    if not a:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Anexo não encontrado.")
+    if a.contexto is None and a.criado_por_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Anexo não encontrado.")
+    try:
+        dado = base64.b64encode(_arquivo(a).read_bytes()).decode("ascii")
+    except OSError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Arquivo do anexo não está mais no servidor.")
+    return {"id": a.id, "nome": a.nome, "imagem_base64": f"data:image/jpeg;base64,{dado}",
+            "largura": a.largura, "altura": a.altura, "bytes": a.bytes, "criado_em": a.criado_em,
+            "criado_por": _nomes(db, {a.criado_por_id}).get(a.criado_por_id)}
+
+
 # ------------------------------------------------------------------ passagem
 
 @router.post("", status_code=201)
@@ -356,6 +493,7 @@ def criar(body: PassagemIn, request: Request, tarefas: BackgroundTasks, db: Sess
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "Você já registrou a passagem desse plantão — abra no histórico para editar.")
     _aplicar_pendencias(db, p, body, user, editar=False)
+    _vincular(db, body.anexos, user, passagem_id=p.id, contexto="passagem")
     db.commit()
     log_action(db, request, user, "ft_passagem_criar", "ft_passagem", p.id, {"data": str(p.data), "turno": p.turno, "pendencias": len(body.pendencias)})
     d = _passagem_dict(db, p)
@@ -391,6 +529,7 @@ def editar(passagem_id: str, body: PassagemIn, request: Request, db: Session = D
     p.resumo, p.recados = body.resumo.strip(), _limpo(body.recados)
     p.editado_em = datetime.utcnow()
     _aplicar_pendencias(db, p, body, user, editar=True)
+    _sincronizar(db, body.anexos, user, passagem_id=p.id, contexto="passagem")
     try:
         db.commit()
     except IntegrityError:
@@ -405,6 +544,9 @@ def excluir(passagem_id: str, request: Request, db: Session = Depends(get_db), u
     p = db.get(FtPassagem, passagem_id)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Passagem não encontrada.")
+    pend_ids = [i for (i,) in db.query(FtPendencia.id).filter(FtPendencia.passagem_id == p.id).all()]
+    _apagar_anexos(db, db.query(FtAnexo).filter(or_(FtAnexo.passagem_id == p.id, FtAnexo.pendencia_id.in_(pend_ids or [""]))).all())
+    db.flush()
     n = db.query(FtPendencia).filter(FtPendencia.passagem_id == p.id).delete()
     info = {"autor_id": p.autor_id, "data": str(p.data), "turno": p.turno, "pendencias_apagadas": n}
     db.delete(p)
@@ -439,12 +581,15 @@ def _pendencia(db: Session, pend_id: str) -> FtPendencia:
 
 def _resposta_pendencia(db: Session, x: FtPendencia) -> dict:
     ps = db.get(FtPassagem, x.passagem_id)
-    return _pend_dict(x, _nomes(db, _ids_pessoas([x]) | {ps.autor_id if ps else None}), ps)
+    return _pend_dict(x, _nomes(db, _ids_pessoas([x]) | {ps.autor_id if ps else None}), ps, _mapa_anexos(db, [x.id]))
 
 
-def _anotar(x: FtPendencia, user, texto: str):
+def _anotar(x: FtPendencia, user, texto: str, anexos: list[str] | None = None):
     # lista nova (não .append) para o SQLAlchemy perceber a mudança no JSON
-    x.historico = (x.historico or []) + [{"em": datetime.utcnow().isoformat(timespec="seconds"), "por_id": user.id, "texto": texto}]
+    item = {"em": datetime.utcnow().isoformat(timespec="seconds"), "por_id": user.id, "texto": texto}
+    if anexos:
+        item["anexos"] = anexos
+    x.historico = (x.historico or []) + [item]
 
 
 @router.post("/pendencias/{pend_id}/resolver")
@@ -455,6 +600,7 @@ def resolver(pend_id: str, body: PendenciaAcaoIn, request: Request, db: Session 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Conte rapidamente como foi resolvido.")
     if x.status == "resolvida":
         raise HTTPException(status.HTTP_409_CONFLICT, "Esta pendência já foi resolvida.")
+    _vincular(db, body.anexos, user, passagem_id=x.passagem_id, pendencia_id=x.id, contexto="resolucao")
     x.status, x.resolucao = "resolvida", texto
     x.resolvida_por_id, x.resolvida_em = user.id, datetime.utcnow()
     db.commit()
@@ -478,9 +624,10 @@ def reabrir(pend_id: str, body: PendenciaAcaoIn, request: Request, db: Session =
 def comentar(pend_id: str, body: PendenciaAcaoIn, request: Request, db: Session = Depends(get_db), user=Depends(REGISTRAR)):
     x = _pendencia(db, pend_id)
     texto = (body.texto or "").strip()
-    if not texto:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Escreva o comentário.")
-    _anotar(x, user, texto)
+    if not texto and not body.anexos:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Escreva o comentário ou anexe um print.")
+    ligados = _vincular(db, body.anexos, user, passagem_id=x.passagem_id, pendencia_id=x.id, contexto="comentario")
+    _anotar(x, user, texto, ligados)
     db.commit()
     return _resposta_pendencia(db, x)
 

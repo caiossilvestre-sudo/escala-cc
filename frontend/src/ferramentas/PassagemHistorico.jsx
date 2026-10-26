@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { Spinner, ErrorBox } from "../components/UI";
 import { dataHora } from "./util";
+import { AnexosVer } from "./PassagemAnexos";
 import { CATEGORIAS, PendenciaCard, TURNOS, diaMes, haQuanto, rotuloPlantao } from "./passagemUtil";
 
 /** Passagem completa (o que houve, recado, o que ficou por categoria). */
@@ -27,6 +28,7 @@ export function PassagemDetalhe({ p, onCiencia, onEditar, onExcluir, onPendencia
       </div>
 
       <div className="pp-texto"><div className="pp-rotulo">O que houve</div>{p.resumo}</div>
+      <AnexosVer anexos={p.anexos} />
       {p.recados && <div className="pp-texto pp-recado"><div className="pp-rotulo">Recado para o próximo plantão</div>{p.recados}</div>}
 
       <div className="pp-resumo-cats">
