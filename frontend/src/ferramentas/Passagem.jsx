@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { TopBar, Spinner, ErrorBox, Toast, ConfirmModal } from "../components/UI";
 import { useToast, useConfirm } from "../lib/hooks";
-import { CATEGORIAS, PARA, PendenciaCard } from "./passagemUtil";
+import { CATEGORIAS, PARA, PassagemUsuario, PendenciaCard } from "./passagemUtil";
 import PassagemForm from "./PassagemForm";
 import PassagemHistorico, { PassagemDetalhe } from "./PassagemHistorico";
 import PassagemGestor from "./PassagemGestor";
@@ -85,7 +85,7 @@ export default function Passagem({ acesso }) {
   const total = painel?.pendencias?.length || 0;
 
   return (
-    <>
+    <PassagemUsuario.Provider value={{ eu: painel?.eu, gerencia }}>
       <TopBar
         title="Passagem de plantão"
         subtitle="Plantão 12x36 — o que houve e o que ficou para o próximo turno ou para o horário comercial"
@@ -163,6 +163,6 @@ export default function Passagem({ acesso }) {
         )}
       </div>
       {extras}
-    </>
+    </PassagemUsuario.Provider>
   );
 }

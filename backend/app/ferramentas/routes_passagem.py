@@ -155,7 +155,7 @@ def _pend_dict(p: FtPendencia, nomes: dict, passagem: FtPassagem | None = None, 
         "id": p.id, "passagem_id": p.passagem_id, "categoria": p.categoria,
         "referencia": p.referencia, "descricao": p.descricao, "para": p.para,
         "prioridade": p.prioridade, "link": p.link, "status": p.status,
-        "criada_em": p.criada_em, "criada_por": nomes.get(p.criada_por_id),
+        "criada_em": p.criada_em, "criada_por": nomes.get(p.criada_por_id), "criada_por_id": p.criada_por_id,
         "resolvida_em": p.resolvida_em, "resolvida_por": nomes.get(p.resolvida_por_id),
         "resolucao": p.resolucao,
         "historico": [{**h, "por": nomes.get(h.get("por_id"))} for h in (p.historico or [])],
@@ -618,6 +618,26 @@ def reabrir(pend_id: str, body: PendenciaAcaoIn, request: Request, db: Session =
     db.commit()
     log_action(db, request, user, "ft_pendencia_reabrir", "ft_pendencia", x.id)
     return _resposta_pendencia(db, x)
+
+
+@router.delete("/pendencias/{pend_id}")
+def excluir_pendencia(pend_id: str, request: Request, db: Session = Depends(get_db), user=Depends(REGISTRAR)):
+    """Card lançado errado. Quem criou exclui o próprio (enquanto estiver aberto);
+    o gestor exclui qualquer um. Os prints vão junto; fica na auditoria."""
+    x = _pendencia(db, pend_id)
+    if not _gerencia(user):
+        if x.criada_por_id != user.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Só quem criou a pendência (ou o gestor) pode excluí-la.")
+        if x.status != "aberta":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Pendência já resolvida — peça ao gestor para excluir.")
+    copia = {"categoria": x.categoria, "referencia": x.referencia, "descricao": x.descricao, "status": x.status,
+             "passagem_id": x.passagem_id, "criada_por_id": x.criada_por_id}
+    _apagar_anexos(db, db.query(FtAnexo).filter(FtAnexo.pendencia_id == x.id).all())
+    db.flush()
+    db.delete(x)
+    db.commit()
+    log_action(db, request, user, "ft_pendencia_excluir", "ft_pendencia", pend_id, copia)
+    return {"ok": True}
 
 
 @router.post("/pendencias/{pend_id}/comentar")
