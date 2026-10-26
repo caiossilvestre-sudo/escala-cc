@@ -17,6 +17,8 @@ PERMISSOES = {
     "doc.senhas": "Documentação · ver senhas dos gravadores",
     "doc.excluir": "Documentação · excluir câmeras LifeGuard",
     "nvr.gerenciar": "Gravadores · incluir, editar, desativar, excluir e liberar canais",
+    "passagem.registrar": "Passagem de plantão · registrar, dar ciência e baixar pendências",
+    "passagem.gerenciar": "Passagem de plantão · painel do gestor, editar e excluir qualquer registro",
     "ft.admin": "Gerenciar permissões",
 }
 # Atalhos da tela de permissões (só preenchem as caixinhas)
@@ -24,9 +26,11 @@ PRESETS = {
     "n1": ["doc.ver", "doc.editar"],
     "n2": ["doc.ver", "doc.editar", "doc.senhas"],
     "leitura": ["doc.ver"],
+    "plantonista": ["passagem.registrar"],
 }
 # Quem tem uma permissão de Documentação precisa conseguir consultar
-IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver"}
+IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver",
+           "passagem.gerenciar": "passagem.registrar"}
 
 
 def normalizar_permissoes(lista) -> list[str]:
