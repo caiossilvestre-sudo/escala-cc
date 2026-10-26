@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { dataHora } from "./util";
+import { AnexosEditor, AnexosVer } from "./PassagemAnexos";
 
 export const CATEGORIAS = [
   { id: "prtg", nome: "PRTG", dica: "Sensor que precisa ser visto em horário comercial", ref: "Sensor / device (ex.: OLT-Centro · Ping)" },
@@ -50,18 +51,22 @@ export function linkSeguro(url) {
 export function PendenciaCard({ p, onMudou, showToast, mostrarOrigem = true }) {
   const [acao, setAcao] = useState(null); // null | "resolver" | "comentar"
   const [texto, setTexto] = useState("");
+  const [prints, setPrints] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [verTudo, setVerTudo] = useState(false);
   const cat = CAT[p.categoria] || { nome: p.categoria };
   const hist = p.historico || [];
   const histVisivel = verTudo ? hist : hist.slice(-1);
   const link = linkSeguro(p.link);
+  const anexos = p.anexos || [];
+  const doContexto = (ctx) => anexos.filter((a) => a.contexto === ctx);
+  const porId = Object.fromEntries(anexos.map((a) => [a.id, a]));
 
   const enviar = async (tipo) => {
     setEnviando(true);
     try {
-      const r = await api.post(`/ferramentas/passagem/pendencias/${p.id}/${tipo}`, { texto });
-      setAcao(null); setTexto("");
+      const r = await api.post(`/ferramentas/passagem/pendencias/${p.id}/${tipo}`, { texto, anexos: prints.map((a) => a.id) });
+      setAcao(null); setTexto(""); setPrints([]);
       showToast?.(tipo === "resolver" ? "Pendência baixada." : tipo === "reabrir" ? "Pendência reaberta." : "Comentário registrado.");
       onMudou?.(r);
     } catch (e) { showToast?.(e.message); } finally { setEnviando(false); }
@@ -78,6 +83,7 @@ export function PendenciaCard({ p, onMudou, showToast, mostrarOrigem = true }) {
       </div>
       {p.referencia && <div className="pp-ref">{p.referencia}</div>}
       <div className="pp-desc">{p.descricao}</div>
+      <AnexosVer anexos={doContexto("pendencia")} />
       <div className="pp-meta">
         {mostrarOrigem && p.origem && <span>Registrada por {p.origem.autor} · plantão {(TURNOS[p.origem.turno]?.label || "").toLowerCase()} {diaMes(p.origem.data)}</span>}
         {link && <a href={link} target="_blank" rel="noopener noreferrer">Abrir link ↗</a>}
@@ -87,24 +93,26 @@ export function PendenciaCard({ p, onMudou, showToast, mostrarOrigem = true }) {
         <div className="pp-hist">
           {hist.length > 1 && !verTudo && <button type="button" className="ft-link" onClick={() => setVerTudo(true)}>Ver os {hist.length} comentários</button>}
           {histVisivel.map((h, i) => (
-            <div key={i} className="pp-hist-item"><b>{h.por || "—"}</b> · {dataHora(h.em)}<div>{h.texto}</div></div>
+            <div key={i} className="pp-hist-item"><b>{h.por || "—"}</b> · {dataHora(h.em)}{h.texto && <div>{h.texto}</div>}
+              <AnexosVer anexos={(h.anexos || []).map((id) => porId[id]).filter(Boolean)} /></div>
           ))}
         </div>
       )}
 
       {p.status === "resolvida" && (
-        <div className="pp-solucao"><b>Solução</b> — {p.resolucao}<div className="pp-meta">{p.resolvida_por} · {dataHora(p.resolvida_em)}</div></div>
+        <div className="pp-solucao"><b>Solução</b> — {p.resolucao}<AnexosVer anexos={doContexto("resolucao")} /><div className="pp-meta">{p.resolvida_por} · {dataHora(p.resolvida_em)}</div></div>
       )}
 
       {acao ? (
-        <div className="pp-acao">
+        <div className="pp-acao" data-colar>
           <textarea
             autoFocus rows={2} value={texto} onChange={(e) => setTexto(e.target.value)}
             placeholder={acao === "resolver" ? "Como foi resolvido? (ex.: sensor normalizado após troca do SFP)" : "Andamento (ex.: N2 acionado, aguardando retorno do cliente)"}
           />
+          <AnexosEditor value={prints} onChange={setPrints} showToast={showToast} rotulo="Anexar print (comprovação)" />
           <div className="pp-acao-botoes">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAcao(null); setTexto(""); }}>Cancelar</button>
-            <button type="button" className={`btn btn-sm ${acao === "resolver" ? "btn-success" : "btn-primary"}`} disabled={enviando || !texto.trim()} onClick={() => enviar(acao)}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAcao(null); setTexto(""); setPrints([]); }}>Cancelar</button>
+            <button type="button" className={`btn btn-sm ${acao === "resolver" ? "btn-success" : "btn-primary"}`} disabled={enviando || (acao === "resolver" ? texto.trim().length < 3 : !texto.trim() && !prints.length)} onClick={() => enviar(acao)}>
               {acao === "resolver" ? "Confirmar baixa" : "Comentar"}
             </button>
           </div>

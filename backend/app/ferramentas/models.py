@@ -186,3 +186,23 @@ class FtPendencia(Base):
     resolvida_em = Column(DateTime, nullable=True)
     resolvida_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
     resolucao = Column(Text, nullable=True)
+
+
+class FtAnexo(Base):
+    """Imagem/print anexado na passagem, numa pendência, num comentário ou na
+    baixa. O arquivo fica no disco (pasta de fotos/passagem); aqui só o nome.
+    Sobe antes de a passagem ser enviada (fica "solto", sem vínculo) e é
+    vinculado ao salvar; solto há mais de 1 dia é apagado sozinho."""
+    __tablename__ = "ft_anexos"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    passagem_id = Column(String, ForeignKey("ft_passagens.id"), nullable=True, index=True)
+    pendencia_id = Column(String, ForeignKey("ft_pendencias.id"), nullable=True, index=True)
+    contexto = Column(String, nullable=True)   # passagem | pendencia | comentario | resolucao (None = solto)
+    arquivo = Column(String, nullable=False)
+    nome = Column(String, nullable=True)       # nome original do arquivo (ou "print")
+    bytes = Column(Integer, nullable=True)
+    largura = Column(Integer, nullable=True)
+    altura = Column(Integer, nullable=True)
+    criado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
