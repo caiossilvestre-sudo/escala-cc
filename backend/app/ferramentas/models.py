@@ -137,6 +137,57 @@ class FtCredencial(Base):
     criado_em = Column(DateTime, default=datetime.utcnow)
 
 
+# ------------------------------------------------------ Acessos do setor
+
+class FtAcessoSecao(Base):
+    """Seção da página Acessos do setor (Suporte geral, Telefonia, Equipamentos...).
+    tipo "equipamentos" muda só a exibição: usuários possíveis + senhas para tentar."""
+    __tablename__ = "ft_acesso_secoes"
+    id = Column(String, primary_key=True, default=gen_id)
+    nome = Column(String, nullable=False, unique=True)
+    tipo = Column(String, nullable=False, default="links")   # links | equipamentos
+    ordem = Column(Integer, nullable=False, default=0)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+
+
+class FtAcessoItem(Base):
+    """Sistema, link ou tipo de equipamento. Link e descrição são opcionais.
+    Quem criou edita/exclui; os demais só com "acessos.gerenciar" (ou admin)."""
+    __tablename__ = "ft_acesso_itens"
+    id = Column(String, primary_key=True, default=gen_id)
+    secao_id = Column(String, ForeignKey("ft_acesso_secoes.id"), nullable=True, index=True)  # vazio só em item excluído de seção apagada
+    nome = Column(String, nullable=False)
+    link = Column(String, nullable=True)
+    descricao = Column(Text, nullable=True)
+    ordem = Column(Integer, nullable=False, default=0)
+    criado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    atualizado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    excluido_em = Column(DateTime, nullable=True, index=True)
+    excluido_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+
+
+class FtAcessoCred(Base):
+    """Uma linha de acesso dentro do item: usuário e/ou senha + observação
+    (ex.: "Usuário N2", "Intelbras W5"). A senha fica CIFRADA (Fernet, mesma
+    chave das senhas dos gravadores) e só sai por /revelar, com auditoria.
+    Posse POR LINHA: qualquer um acrescenta; cada um altera as suas."""
+    __tablename__ = "ft_acesso_creds"
+    id = Column(String, primary_key=True, default=gen_id)
+    item_id = Column(String, ForeignKey("ft_acesso_itens.id"), nullable=False, index=True)
+    usuario = Column(String, nullable=True)
+    senha_cifrada = Column(Text, nullable=True)
+    rotulo = Column(String, nullable=True)
+    ordem = Column(Integer, nullable=False, default=0)
+    criado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    atualizado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    excluido_em = Column(DateTime, nullable=True, index=True)
+    excluido_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+
+
 # ------------------------------------------------- Passagem de plantão (12x36)
 
 class FtPassagem(Base):

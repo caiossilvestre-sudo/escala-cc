@@ -834,3 +834,7 @@ def definir_permissao(body: PermissaoIn, request: Request, db: Session = Depends
 from app.ferramentas.routes_passagem import router as _passagem_router  # noqa: E402
 
 router.include_router(_passagem_router)
+
+from app.ferramentas.routes_acessos import router as _acessos_router  # noqa: E402
+
+router.include_router(_acessos_router)

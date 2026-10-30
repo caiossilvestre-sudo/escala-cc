@@ -151,6 +151,45 @@ class CredencialIn(BaseModel):
     senha: str | None = Field(default=None, max_length=200)
 
 
+class AcessoSecaoIn(BaseModel):
+    nome: str = Field(min_length=1, max_length=80)
+    tipo: Literal["links", "equipamentos"] = "links"
+
+
+class AcessoSecaoPatch(BaseModel):
+    nome: str | None = Field(default=None, min_length=1, max_length=80)
+    tipo: Literal["links", "equipamentos"] | None = None
+    ordem: int | None = Field(default=None, ge=0, le=10000)
+
+
+class AcessoItemIn(BaseModel):
+    secao_id: str = Field(min_length=1, max_length=60)
+    nome: str = Field(min_length=1, max_length=150)
+    link: str | None = S(1000)
+    descricao: str | None = S(1000)
+
+
+class AcessoItemPatch(BaseModel):
+    secao_id: str | None = Field(default=None, min_length=1, max_length=60)
+    nome: str | None = Field(default=None, min_length=1, max_length=150)
+    link: str | None = S(1000)
+    descricao: str | None = S(1000)
+
+
+class AcessoCredIn(BaseModel):
+    """Usuário e/ou senha (pelo menos um) + observação opcional."""
+    usuario: str | None = S(150)
+    senha: str | None = Field(default=None, max_length=300)
+    rotulo: str | None = S(150)
+
+
+class AcessoCredPatch(BaseModel):
+    """Só os campos enviados mudam. "senha" ausente = mantém; "" = apaga."""
+    usuario: str | None = S(150)
+    senha: str | None = Field(default=None, max_length=300)
+    rotulo: str | None = S(150)
+
+
 class PermissaoIn(BaseModel):
     colaborador_id: str = Field(min_length=1, max_length=60)
     permissoes: list[str] = Field(default_factory=list, max_length=30)  # lista vazia remove o acesso

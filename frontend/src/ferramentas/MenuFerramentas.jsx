@@ -6,6 +6,7 @@ import "./ferramentas.css";
 const ICONES = {
   LifeGuard: <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />,
   Plantão: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9 2h6" /></>,
+  Setor: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
 };
 
 /** Um subgrupo do menu (abre/fecha) com as páginas liberadas para a pessoa. */
@@ -20,9 +21,11 @@ function Subgrupo({ nome, itens, ativo, onIr, abertas }) {
       </button>
       {aberto && (
         <div className="ft-menu-filhos">
-          {itens.map((p) => (
+          {itens.map((p) => (p.link ? (
+            <a key={p.id} className="ft-menu-externo" href={p.link} target="_blank" rel="noopener noreferrer" title="Abre numa aba nova">{p.label}<span aria-hidden="true"> ↗</span></a>
+          ) : (
             <button key={p.id} type="button" className={ativo === p.id ? "active" : ""} aria-current={ativo === p.id ? "page" : undefined} onClick={() => onIr(p.id)}>{p.label}{p.contador && abertas > 0 && <span className="badge">{abertas}</span>}</button>
-          ))}
+          )))}
         </div>
       )}
     </>

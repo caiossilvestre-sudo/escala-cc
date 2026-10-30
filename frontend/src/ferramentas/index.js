@@ -20,13 +20,13 @@ export function useFerramentasAcesso(userId) {
   }, [userId]);
   const tem = (p) => permissoes.includes(p);
   // primeira página liberada (para quem só vê Ferramentas)
-  const inicial = PAGINAS_LIFEGUARD.find((p) => paginaLiberada(p, { tem }))?.id || null;
+  const inicial = PAGINAS_LIFEGUARD.find((p) => !p.link && paginaLiberada(p, { tem }))?.id || null;
   return { permissoes, tem, inicial };
 }
 
 /** Renderiza a página de Ferramentas da aba ativa (ou nada, se a aba não é do módulo). */
 export function FerramentasPagina({ tab, acesso }) {
   const pagina = PAGINAS_LIFEGUARD.find((p) => p.id === tab);
-  if (!pagina || !paginaLiberada(pagina, acesso)) return null;
+  if (!pagina || pagina.link || !paginaLiberada(pagina, acesso)) return null;
   return pagina.render(acesso);
 }

@@ -8,11 +8,13 @@ const CURTO = {
   "doc.solicitar": "Solicitar (técnico)", "doc.tratar": "Tratar pedidos",
   "nvr.gerenciar": "Gravadores",
   "passagem.registrar": "Registrar / baixar", "passagem.gerenciar": "Gestor",
+  "acessos.usar": "Usar", "acessos.gerenciar": "Editar todos",
+  "escalation.infra": "Infraestrutura", "escalation.n2": "Operações (N2)",
   "ft.admin": "Permissões",
 };
-const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "passagem.gerenciar": "passagem.registrar" };
+const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "passagem.gerenciar": "passagem.registrar", "acessos.gerenciar": "acessos.usar" };
 // Colunas agrupadas no cabeçalho (prefixo do código -> título do grupo)
-const GRUPOS = { doc: "Documentação", passagem: "Passagem de plantão" };
+const GRUPOS = { doc: "Documentação", passagem: "Passagem de plantão", acessos: "Acessos do setor", escalation: "Escalation" };
 const grupoDe = (codigo) => (GRUPOS[codigo.split(".")[0]] ? codigo.split(".")[0] : null);
 
 /** Permissões de Ferramentas por página/tópico, por colaborador. */
@@ -81,7 +83,7 @@ export default function Permissoes({ onVoltar, showToast }) {
       <TopBar title="Ferramentas · Permissões" subtitle="Acesso por página/tópico das Ferramentas — independe do perfil na escala" right={<button className="btn btn-ghost" onClick={onVoltar}>← Voltar</button>} />
       <div className="content">
         <ErrorBox error={erro} />
-        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1, N2 e Técnico só preenchem as caixinhas da Documentação (Técnico consulta e envia pedidos para o N2; N2 inclui tratar esses pedidos); Plantonista libera a Passagem de plantão — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
+        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1, N2 e Técnico só preenchem as caixinhas da Documentação (Técnico consulta e envia pedidos para o N2; N2 inclui tratar esses pedidos); Plantonista libera a Passagem de plantão. Em Acessos do setor, "Usar" deixa a pessoa consultar links e senhas, incluir e alterar só o que ela cadastrou; "Editar todos" libera alterar qualquer item ou senha e organizar as seções — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
         <div className="card">
           <div className="ft-filtros" style={{ marginBottom: 12 }}>
             <input type="search" placeholder="Filtrar por nome ou setor" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
