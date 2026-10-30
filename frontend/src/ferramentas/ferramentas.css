@@ -450,8 +450,25 @@ body.ft-celular .main .content { padding: 0; }
 .ft-perm thead th { background: var(--surface, #fff); }
 .ft-perm .ft-perm-fixa { position: sticky; left: 0; z-index: 2; background: var(--surface, #fff); min-width: 170px; max-width: 220px; box-shadow: 1px 0 0 var(--border), 6px 0 8px -6px rgba(0,0,0,.12); }
 .ft-perm thead .ft-perm-fixa { z-index: 4; }
-.ft-perm tbody tr:hover td { background: #FAFAFB; }
 .ft-perm-todos { margin-top: 4px; border: 1px solid var(--border); background: white; color: var(--text-muted); font: inherit; font-size: 10px; font-weight: 600; text-transform: lowercase; letter-spacing: 0; padding: 1px 7px; border-radius: 99px; cursor: pointer; }
 .ft-perm-todos:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .ft-perm-todos:disabled { opacity: .45; cursor: default; }
 .ft-perm-qtd { font-size: 10.5px; font-weight: 500; color: var(--text-muted); text-transform: none; letter-spacing: 0; margin-top: 2px; }
+
+/* Permissões: grupos com faixa de cor e separador; legenda recolhível */
+.ft-perm th.ft-perm-grupo { text-align: center; font-size: 11px; color: var(--text); border-bottom: 1px solid var(--border); padding: 8px 6px; }
+.ft-perm th.ft-perm-col { text-align: center; vertical-align: bottom; font-size: 10.5px; line-height: 1.25; padding: 6px 8px; min-width: 78px; }
+.ft-perm .g-b { background: #F6F7F9; }
+.ft-perm thead th.g-b { background: #EEF0F4; }
+.ft-perm thead th.g-a { background: var(--surface, #fff); }
+.ft-perm .g-ini { border-left: 2px solid #D9DCE2; }
+.ft-perm tbody tr:hover td.g-a, .ft-perm tbody tr:hover td.ft-perm-fixa { background: #FBF4EE; }
+.ft-perm tbody tr:hover td.g-b { background: #F6ECE3; }
+.ft-perm-legenda { padding: 10px 14px; }
+.ft-perm-legenda summary { cursor: pointer; font-weight: 600; }
+.ft-perm-legenda summary span { font-weight: 400; opacity: .7; }
+.ft-perm-legenda dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 10px 0 6px; }
+.ft-perm-legenda dt { font-weight: 700; }
+.ft-perm-legenda dd { margin: 0; }
+.ft-perm-legenda p { margin: 6px 0 0; }
+@media (max-width: 760px) { .ft-perm-legenda dl { grid-template-columns: 1fr; } }
