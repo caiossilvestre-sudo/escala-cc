@@ -23,6 +23,7 @@ export default function Permissoes({ onVoltar, showToast }) {
   const [erro, setErro] = useState("");
   const [filtro, setFiltro] = useState("");
   const [salvando, setSalvando] = useState(null);
+  const [lote, setLote] = useState(null); // código da coluna sendo aplicada para todos
 
   const carregar = () => api.get("/ferramentas/permissoes").then(setDados).catch((e) => setErro(e.message));
   useEffect(() => { carregar(); }, []);
@@ -64,6 +65,40 @@ export default function Permissoes({ onVoltar, showToast }) {
   const aplicarAtalho = (p, preset) => salvar(p, [...p.permissoes.filter((c) => !c.startsWith("doc.")), ...preset]);
   const lista = dados.pessoas.filter((p) => !filtro || `${p.nome} ${p.equipe}`.toLowerCase().includes(filtro.toLowerCase()));
 
+  // Marca (ou desmarca, se todos já têm) uma coluna para todo mundo que está no filtro
+  const marcarColuna = async (c) => {
+    const alvo = lista.filter((p) => !p.fixo);
+    if (!alvo.length) return;
+    const todosTem = alvo.every((p) => p.permissoes.includes(c.codigo));
+    const rotulo = `"${CURTO[c.codigo] || c.label}"${grupoDe(c.codigo) ? ` (${GRUPOS[grupoDe(c.codigo)]})` : ""}`;
+    const quem = filtro ? `as ${alvo.length} pessoas do filtro "${filtro}"` : `TODAS as ${alvo.length} pessoas`;
+    if (!window.confirm(`${todosTem ? "Tirar" : "Dar"} ${rotulo} para ${quem}?`)) return;
+    setLote(c.codigo);
+    try {
+      for (const p of alvo) {
+        const atual = new Set(p.permissoes);
+        if (todosTem) {
+          atual.delete(c.codigo);
+          Object.entries(IMPLICA).forEach(([k, base]) => { if (base === c.codigo) atual.delete(k); });
+        } else {
+          if (atual.has(c.codigo)) continue;
+          atual.add(c.codigo);
+        }
+        await salvar(p, [...atual]);
+      }
+      showToast(`${todosTem ? "Removido de" : "Liberado para"} ${alvo.length} pessoa(s).`);
+    } finally { setLote(null); }
+  };
+  const tituloColuna = (c) => (
+    <>
+      <div>{CURTO[c.codigo] || c.label}</div>
+      <button type="button" className="ft-perm-todos" disabled={!!lote || !lista.some((p) => !p.fixo)}
+        title={`Marcar/desmarcar para todos ${filtro ? "do filtro" : "da lista"}`} onClick={() => marcarColuna(c)}>
+        {lote === c.codigo ? "…" : "todos"}
+      </button>
+    </>
+  );
+
   const celula = (p, c) => (
     <td key={c.codigo} style={{ textAlign: "center" }}>
       <input
@@ -71,7 +106,7 @@ export default function Permissoes({ onVoltar, showToast }) {
         aria-label={`${c.label} — ${p.nome}`}
         title={c.label}
         checked={p.permissoes.includes(c.codigo)}
-        disabled={p.fixo || salvando === p.colaborador_id}
+        disabled={p.fixo || salvando === p.colaborador_id || !!lote}
         onChange={() => alternar(p, c.codigo)}
         style={{ width: 16, height: 16, cursor: p.fixo ? "default" : "pointer", accentColor: "var(--primary)" }}
       />
@@ -83,37 +118,37 @@ export default function Permissoes({ onVoltar, showToast }) {
       <TopBar title="Ferramentas · Permissões" subtitle="Acesso por página/tópico das Ferramentas — independe do perfil na escala" right={<button className="btn btn-ghost" onClick={onVoltar}>← Voltar</button>} />
       <div className="content">
         <ErrorBox error={erro} />
-        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1, N2 e Técnico só preenchem as caixinhas da Documentação (Técnico consulta e envia pedidos para o N2; N2 inclui tratar esses pedidos); Plantonista libera a Passagem de plantão. Em Acessos do setor, "Usar" deixa a pessoa consultar links e senhas, incluir e alterar só o que ela cadastrou; "Editar todos" libera alterar qualquer item ou senha e organizar as seções — depois dá para ajustar uma a uma. Toda alteração fica no log de auditoria.</div>
+        <div className="info-box">Cada caixinha salva na hora. Administradores do Escala têm tudo automaticamente. Os atalhos Leitura, N1, N2 e Técnico só preenchem as caixinhas da Documentação (Técnico consulta e envia pedidos para o N2; N2 inclui tratar esses pedidos); Plantonista libera a Passagem de plantão. Em Acessos do setor, "Usar" deixa a pessoa consultar links e senhas, incluir e alterar só o que ela cadastrou; "Editar todos" libera alterar qualquer item ou senha e organizar as seções — depois dá para ajustar uma a uma. O "todos" embaixo de cada coluna marca (ou desmarca) para quem está no filtro — ex.: filtre "N2" e libere de uma vez. Toda alteração fica no log de auditoria.</div>
         <div className="card">
           <div className="ft-filtros" style={{ marginBottom: 12 }}>
             <input type="search" placeholder="Filtrar por nome ou setor" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
           </div>
-          <div className="ft-tabela-wrap">
-            <table className="tbl" style={{ minWidth: 720 }}>
+          <div className="ft-tabela-wrap ft-perm-wrap">
+            <table className="tbl ft-perm" style={{ minWidth: 720 }}>
               <thead>
                 <tr>
-                  <th rowSpan={2}>Colaborador</th>
+                  <th rowSpan={2} className="ft-perm-fixa">Colaborador{lista.length !== dados.pessoas.length && <div className="ft-perm-qtd">{lista.length} de {dados.pessoas.length}</div>}</th>
                   {blocos.map((b) => (b.grupo
                     ? <th key={b.grupo} colSpan={b.cols.length} style={{ textAlign: "center", borderBottom: "1px solid var(--border)" }}>{GRUPOS[b.grupo]}</th>
-                    : <th key={b.cols[0].codigo} rowSpan={2} style={{ textAlign: "center" }} title={b.cols[0].label}>{CURTO[b.cols[0].codigo] || b.cols[0].label}</th>))}
+                    : <th key={b.cols[0].codigo} rowSpan={2} style={{ textAlign: "center" }} title={b.cols[0].label}>{tituloColuna(b.cols[0])}</th>))}
                   <th rowSpan={2}>Atalhos</th>
                 </tr>
-                <tr>{blocos.filter((b) => b.grupo).flatMap((b) => b.cols).map((c) => <th key={c.codigo} style={{ textAlign: "center" }} title={c.label}>{CURTO[c.codigo] || c.label}</th>)}</tr>
+                <tr>{blocos.filter((b) => b.grupo).flatMap((b) => b.cols).map((c) => <th key={c.codigo} style={{ textAlign: "center" }} title={c.label}>{tituloColuna(c)}</th>)}</tr>
               </thead>
               <tbody>
                 {lista.map((p) => (
                   <tr key={p.colaborador_id}>
-                    <td><div style={{ fontWeight: 600 }}>{p.nome}</div><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{p.fixo ? "Admin do Escala" : p.equipe}</div></td>
+                    <td className="ft-perm-fixa"><div style={{ fontWeight: 600 }}>{p.nome}</div><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{p.fixo ? "Admin do Escala" : p.equipe}</div></td>
                     {colunas.map((c) => celula(p, c))}
                     <td>
                       {!p.fixo && (
                         <div style={{ display: "flex", gap: 4 }}>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.leitura)} title="Só consultar/exportar a Documentação — sem editar nada">Leitura</button>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.n1)}>N1</button>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.n2)} title="Documentação completa + tratar as solicitações dos técnicos">N2</button>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => aplicarAtalho(p, dados.presets.tecnico)} title="Consultar e pedir alterações/fotos ao N2 — não edita nada">Técnico</button>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, [...new Set([...p.permissoes, ...(dados.presets.plantonista || [])])])} title="Libera registrar a passagem de plantão (mantém o resto)">Plantonista</button>
-                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id} onClick={() => salvar(p, [])} title="Remover todo o acesso">Nenhum</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id || !!lote} onClick={() => aplicarAtalho(p, dados.presets.leitura)} title="Só consultar/exportar a Documentação — sem editar nada">Leitura</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id || !!lote} onClick={() => aplicarAtalho(p, dados.presets.n1)}>N1</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id || !!lote} onClick={() => aplicarAtalho(p, dados.presets.n2)} title="Documentação completa + tratar as solicitações dos técnicos">N2</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id || !!lote} onClick={() => aplicarAtalho(p, dados.presets.tecnico)} title="Consultar e pedir alterações/fotos ao N2 — não edita nada">Técnico</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id || !!lote} onClick={() => salvar(p, [...new Set([...p.permissoes, ...(dados.presets.plantonista || [])])])} title="Libera registrar a passagem de plantão (mantém o resto)">Plantonista</button>
+                          <button className="btn btn-ghost btn-sm" disabled={salvando === p.colaborador_id || !!lote} onClick={() => salvar(p, [])} title="Remover todo o acesso">Nenhum</button>
                         </div>
                       )}
                     </td>
