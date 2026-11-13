@@ -200,7 +200,7 @@ button.ft-linha:focus-visible { outline: 2px solid var(--primary); outline-offse
   .app-shell .nav { gap: 0; }
   .app-shell .nav-group { margin-bottom: 2px; }
   .app-shell .nav-group-label { padding: 8px 10px 2px; }
-  .app-shell .nav button { padding: 6px 10px; }
+  .app-shell .nav button, .app-shell .nav a.ft-menu-externo { padding: 6px 10px; }
   .app-shell .ft-menu-filhos { gap: 1px; margin-top: 1px; }
   .app-shell .nav-footnote { padding: 8px; }
   .app-shell .sidebar-footer button { padding: 6px 10px; }

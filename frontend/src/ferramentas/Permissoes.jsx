@@ -9,13 +9,14 @@ const CURTO = {
   "nvr.gerenciar": "Gravadores",
   "passagem.registrar": "Registrar", "passagem.gerenciar": "Gestor",
   "acessos.usar": "Usar", "acessos.gerenciar": "Editar tudo",
+  "procedimentos.consultar": "Consultar",
   "escalation.infra": "Infraestrutura", "escalation.n2": "Operações (N2)",
   "ft.admin": "Permissões",
 };
 const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "passagem.gerenciar": "passagem.registrar", "acessos.gerenciar": "acessos.usar" };
 // Colunas agrupadas no cabeçalho (prefixo do código -> grupo). Toda coluna tem
 // grupo; cada grupo ganha faixa de cor própria e linha separadora.
-const GRUPOS = { doc: "LifeGuard · Documentação", nvr: "LifeGuard · Documentação", passagem: "Passagem de plantão", acessos: "Acessos do setor", escalation: "Escalation", ft: "Administração" };
+const GRUPOS = { doc: "LifeGuard · Documentação", nvr: "LifeGuard · Documentação", passagem: "Passagem de plantão", acessos: "Acessos do setor", procedimentos: "Procedimentos", escalation: "Escalation", ft: "Administração" };
 const CHAVE = { nvr: "doc" }; // Gravadores entra no mesmo grupo da Documentação
 const grupoDe = (codigo) => { const pre = codigo.split(".")[0]; return GRUPOS[pre] ? (CHAVE[pre] || pre) : "outros"; };
 
@@ -127,6 +128,8 @@ export default function Permissoes({ onVoltar, showToast }) {
             <dd><b>Registrar</b> registrar a passagem, dar ciência e baixar pendências · <b>Gestor</b> painel do gestor, editar e excluir qualquer registro</dd>
             <dt>Acessos do setor</dt>
             <dd><b>Usar</b> ver links e senhas, incluir e alterar o que a própria pessoa cadastrou · <b>Editar tudo</b> alterar qualquer item/senha e organizar as seções</dd>
+            <dt>Procedimentos</dt>
+            <dd><b>Consultar</b> buscar nos POPs do SharePoint e perguntar ao assistente (em construção)</dd>
             <dt>Escalation</dt>
             <dd><b>Infraestrutura</b> link externo de escalation · <b>Operações (N2)</b> página do N2 (em construção)</dd>
             <dt>Administração</dt>

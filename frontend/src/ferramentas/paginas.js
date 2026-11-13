@@ -19,6 +19,7 @@ export const PAGINAS_LIFEGUARD = [
   { id: "lg-gravadores", grupo: "LifeGuard", label: "Gravadores", permissao: "nvr.gerenciar", render: (acesso) => createElement(Gravadores, { acesso }) },
   { id: "ft-passagem", grupo: "Plantão", label: "Passagem de plantão", permissao: "passagem.registrar", render: (acesso) => createElement(Passagem, { acesso }) },
   { id: "ft-acessos", grupo: "Setor", label: "Acessos do setor", permissao: "acessos.usar", render: () => createElement(Acessos) },
+  { id: "ft-procedimentos", grupo: "Setor", label: "Procedimentos", permissao: "procedimentos.consultar", render: () => createElement(EmConstrucao, { titulo: "Procedimentos" }) },
   // http dentro do sistema (https) é bloqueado pelo navegador — por isso abre em aba nova
   { id: "ft-escalation-infra", grupo: "Setor", label: "Escalation Infraestrutura", permissao: "escalation.infra", link: "http://cet.soon.it:5000/publico" },
   { id: "ft-escalation-n2", grupo: "Setor", label: "Escalation Operações (N2)", permissao: "escalation.n2", render: () => createElement(EmConstrucao, { titulo: "Escalation Operações (N2)" }) },

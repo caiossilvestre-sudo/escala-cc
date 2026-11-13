@@ -23,6 +23,7 @@ PERMISSOES = {
     "passagem.gerenciar": "Passagem de plantão · painel do gestor, editar e excluir qualquer registro",
     "acessos.usar": "Acessos do setor · consultar links e senhas, incluir e alterar o que a própria pessoa cadastrou",
     "acessos.gerenciar": "Acessos do setor · alterar qualquer item/senha e organizar as seções",
+    "procedimentos.consultar": "Procedimentos · consultar os POPs e perguntar ao assistente",
     "escalation.infra": "Escalation · Infraestrutura (link externo)",
     "escalation.n2": "Escalation · Operações (N2)",
     "ft.admin": "Gerenciar permissões",
