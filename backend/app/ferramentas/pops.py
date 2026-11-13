@@ -57,6 +57,45 @@ def nome_arquivo_seguro(nome: str) -> Path | None:
     return pasta_pops() / nome
 
 
+# ------------------------------------------------------------- quem vê o quê
+
+# Pastas de "03 - Procedimentos Operacionais" por prefixo do nome:
+#   00 - Uso comum (N1, N2 e Monitoramento) → todos
+#   01 - Atendimento N1 → N1
+#   02 - Atendimento N2 e 04 - Atendimento N2 - monitoramento → N2 e Monitoramento
+PASTAS_TODOS = {"00"}
+PASTAS_POR_GRUPO = {"N1": {"01"}, "N2": {"02", "04"}}
+
+
+def prefixo(caminho: str) -> str:
+    return (caminho or "")[:2]
+
+
+def grupo_da_equipe(equipe: str | None) -> str | None:
+    e = _sem_acento(equipe or "")
+    if "n1" in re.findall(r"n\d", e):
+        return "N1"
+    if "n2" in re.findall(r"n\d", e) or "monitor" in e:
+        return "N2"
+    return None
+
+
+def pastas_do(user) -> set | None:
+    """None = vê tudo (admin ou permissão "procedimentos.todos")."""
+    if user.role == "admin" or "procedimentos.todos" in getattr(user, "ft_permissoes", set()):
+        return None
+    equipes = [user.equipe] + (list(user.equipes_gerenciadas or []) if user.role == "supervisor" else [])
+    pastas = set(PASTAS_TODOS)
+    for eq in equipes:
+        pastas |= PASTAS_POR_GRUPO.get(grupo_da_equipe(eq), set())
+    return pastas
+
+
+def pode_ver(user, caminho: str) -> bool:
+    pastas = pastas_do(user)
+    return pastas is None or prefixo(caminho) in pastas
+
+
 # ------------------------------------------------------------- identificação
 
 RE_NOME = re.compile(r"(PG-ST\d{3})(?:-N2)?(?:\s+v(\d{3}))?\s*[-–]\s*(.+?)\.pdf$", re.I)
@@ -313,10 +352,9 @@ class Indice:
     """BM25 simples sobre os trechos. Título e seção pesam mais que o texto."""
 
     def __init__(self, linhas):
-        # linhas: (trecho_id, pop_id, codigo, titulo, secao, texto, sha256)
-        # (o mesmo PDF em duas pastas — ex.: "Uso comum" — conta como um só pelo sha256)
+        # linhas: (trecho_id, pop_id, codigo, titulo, secao, texto, sha256, ordem, caminho)
         self.docs, self.df = [], Counter()
-        for tid, pid, cod, tit, sec, txt, sha in linhas:
+        for tid, pid, cod, tit, sec, txt, sha, ordem, caminho in linhas:
             tf = Counter()
             for t in termos(tit or ""):
                 tf[t] += 3
@@ -324,39 +362,45 @@ class Indice:
                 tf[t] += 2
             for t in termos(txt or ""):
                 tf[t] += 1
-            self.docs.append((tid, sha or pid, (cod or "").upper(), tf, sum(tf.values()) or 1, _sem_acento(sec or "")))
+            self.docs.append({"tid": tid, "doc": sha or pid, "ordem": ordem, "pasta": prefixo(caminho),
+                              "cod": (cod or "").upper(), "tf": tf, "tam": sum(tf.values()) or 1, "sec": _sem_acento(sec or "")})
             self.df.update(tf.keys())
         self.n = len(self.docs) or 1
-        self.media = sum(d[4] for d in self.docs) / self.n if self.docs else 1
+        self.media = sum(d["tam"] for d in self.docs) / self.n if self.docs else 1
 
-    def buscar(self, q: str, limite: int = 8, por_pop: int = 2):
+    def buscar(self, q: str, pastas: set | None = None, limite: int = 8, por_pop: int = 2):
+        """pastas = prefixos liberados para a pessoa ("00", "02"...); None = todas."""
         pesos = termos_consulta(q)
         cods = {f"PG-ST{c}" for c in re.findall(r"(?:st|pg-st|pop)\s*-?\s*(\d{3})", _sem_acento(q))}
         if not pesos and not cods:
             return [], []
         k1, b = 1.4, 0.7
         pont = []
-        for tid, pid, cod, tf, tam, sec in self.docs:
-            s = 0.0
+        for d in self.docs:
+            if pastas is not None and d["pasta"] not in pastas:
+                continue
+            s, tf = 0.0, d["tf"]
             for t, w in pesos.items():
                 f = tf.get(t)
                 if not f:
                     continue
                 idf = math.log(1 + (self.n - self.df[t] + 0.5) / (self.df[t] + 0.5))
-                s += w * idf * f * (k1 + 1) / (f + k1 * (1 - b + b * tam / self.media))
-            if cod in cods:
+                s += w * idf * f * (k1 + 1) / (f + k1 * (1 - b + b * d["tam"] / self.media))
+            if d["cod"] in cods:
                 s += 20
-            if sec in GENERICAS:
+            if d["sec"] in GENERICAS:
                 s *= 0.6
             if s > 0:
-                pont.append((s, tid, pid))
-        pont.sort(reverse=True)
-        saida, conta = [], defaultdict(int)
-        for s, tid, pid in pont:
-            if conta[pid] >= por_pop:
+                pont.append((s, d))
+        pont.sort(key=lambda x: -x[0])
+        # O mesmo PDF em duas pastas (ex.: "Uso comum") conta como um só (sha256)
+        saida, conta, vistos = [], defaultdict(int), set()
+        for s, d in pont:
+            if conta[d["doc"]] >= por_pop or (d["doc"], d["ordem"]) in vistos:
                 continue
-            conta[pid] += 1
-            saida.append((tid, round(s, 2)))
+            conta[d["doc"]] += 1
+            vistos.add((d["doc"], d["ordem"]))
+            saida.append((d["tid"], round(s, 2)))
             if len(saida) >= limite:
                 break
         return saida, list(pesos)
@@ -371,13 +415,8 @@ def indice(db, chave) -> "Indice":
     with _trava:
         if _cache["chave"] != chave:
             from app.ferramentas.models import FtPop, FtPopTrecho
-            vistos, linhas = {}, []
-            for ln in (db.query(FtPopTrecho.id, FtPop.id, FtPop.codigo, FtPop.titulo, FtPopTrecho.secao, FtPopTrecho.texto,
-                                FtPop.sha256, FtPopTrecho.ordem)
-                       .join(FtPop, FtPop.id == FtPopTrecho.pop_id).order_by(FtPop.caminho).all()):
-                # cópia idêntica em outra pasta: fica só a primeira
-                if vistos.setdefault((ln[6], ln[7]), ln[1]) != ln[1]:
-                    continue
-                linhas.append(ln[:7])
+            linhas = (db.query(FtPopTrecho.id, FtPop.id, FtPop.codigo, FtPop.titulo, FtPopTrecho.secao, FtPopTrecho.texto,
+                               FtPop.sha256, FtPopTrecho.ordem, FtPop.caminho)
+                      .join(FtPop, FtPop.id == FtPopTrecho.pop_id).order_by(FtPop.caminho).all())
             _cache["indice"], _cache["chave"] = Indice(linhas), chave
         return _cache["indice"]

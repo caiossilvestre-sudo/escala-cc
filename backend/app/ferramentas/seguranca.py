@@ -23,7 +23,8 @@ PERMISSOES = {
     "passagem.gerenciar": "Passagem de plantão · painel do gestor, editar e excluir qualquer registro",
     "acessos.usar": "Acessos do setor · consultar links e senhas, incluir e alterar o que a própria pessoa cadastrou",
     "acessos.gerenciar": "Acessos do setor · alterar qualquer item/senha e organizar as seções",
-    "procedimentos.consultar": "Procedimentos · consultar os POPs e perguntar ao assistente",
+    "procedimentos.consultar": "Procedimentos · consultar os POPs do próprio setor (N1: Uso comum + N1; N2 e Monitoramento: Uso comum + N2 + Monitoramento)",
+    "procedimentos.todos": "Procedimentos · consultar os POPs de todos os setores",
     "escalation.infra": "Escalation · Infraestrutura (link externo)",
     "escalation.n2": "Escalation · Operações (N2)",
     "ft.admin": "Gerenciar permissões",
@@ -39,7 +40,8 @@ PRESETS = {
 # Quem tem uma permissão de Documentação precisa conseguir consultar
 IMPLICA = {"doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "nvr.gerenciar": "doc.ver",
            "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver",
-           "passagem.gerenciar": "passagem.registrar", "acessos.gerenciar": "acessos.usar"}
+           "passagem.gerenciar": "passagem.registrar", "acessos.gerenciar": "acessos.usar",
+           "procedimentos.todos": "procedimentos.consultar"}
 
 
 def normalizar_permissoes(lista) -> list[str]:
