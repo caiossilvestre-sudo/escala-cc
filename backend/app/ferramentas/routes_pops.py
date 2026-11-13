@@ -133,7 +133,7 @@ def sync_fim(body: FimIn, db: Session = Depends(get_db)):
 def _pop_dict(p: FtPop) -> dict:
     return {"id": p.id, "codigo": p.codigo, "titulo": p.titulo, "versao": p.versao, "pasta": p.pasta,
             "caminho": p.caminho, "paginas": p.paginas, "erro": bool(p.erro),
-            "atualizado_em": p.sincronizado_em}
+            "link": P.link_sharepoint(p.caminho), "atualizado_em": p.sincronizado_em}
 
 
 @router.get("")
@@ -188,19 +188,6 @@ def arquivo(nome: str, db: Session = Depends(get_db), user: Colaborador = Depend
     if not caminho or not caminho.exists() or not pop or not P.pode_ver(user, pop.caminho):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Arquivo não encontrado.")
     return Response(caminho.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
-
-
-@router.get("/{pop_id}/pagina/{n}")
-def pagina(pop_id: str, n: int, db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)):
-    """Página do POP como imagem: o visualizador do sistema mostra o documento
-    sempre na versão sincronizada, sem entregar o PDF para download."""
-    pop = db.get(FtPop, pop_id)
-    if not pop or not P.pode_ver(user, pop.caminho):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Procedimento não encontrado.")
-    jpg = P.pagina_jpg(pop.id, n)
-    if not jpg:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Página não encontrada.")
-    return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/buscas-sem-resultado")

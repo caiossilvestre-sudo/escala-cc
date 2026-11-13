@@ -265,26 +265,6 @@ def extrair(pdf: bytes, caminho: str, pop_id: str) -> dict:
     return {**ident, "paginas": doc.page_count, "trechos": trechos}
 
 
-def pagina_jpg(pop_id: str, n: int) -> bytes | None:
-    """Página n (1, 2...) do PDF como imagem, para ver no sistema sem baixar o
-    arquivo. Fica em cache em disco; some junto com os prints quando o POP muda."""
-    import pymupdf
-
-    cache = pasta_pops() / f"{pop_id}-pag{n:03d}.jpg"
-    if cache.exists():
-        return cache.read_bytes()
-    pdf = pasta_pops() / f"{pop_id}.pdf"
-    if not pdf.exists():
-        return None
-    with pymupdf.open(pdf) as doc:
-        if n < 1 or n > doc.page_count:
-            return None
-        pix = doc[n - 1].get_pixmap(dpi=130)
-        jpg = pix.tobytes("jpeg", jpg_quality=82)
-    cache.write_bytes(jpg)
-    return jpg
-
-
 def apagar_imagens(pop_id: str):
     for f in pasta_pops().glob(f"{pop_id}-*.jpg"):
         try:
