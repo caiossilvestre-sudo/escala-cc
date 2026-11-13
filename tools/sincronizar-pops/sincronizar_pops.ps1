@@ -1,5 +1,5 @@
 ﻿# Sincroniza os POPs (PDF) da pasta do OneDrive com o sistema Suporte Técnico.
-# Roda pela tarefa agendada às 9h e às 15h. Manda só o que mudou desde a última vez.
+# Roda pela tarefa agendada todo dia às 9h. Manda só o que mudou desde a última vez.
 # Não altera nada no OneDrive/SharePoint: só lê.
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

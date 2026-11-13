@@ -310,7 +310,7 @@ class FtPopTrecho(Base):
 
 
 class FtPopSync(Base):
-    """Registro de cada rodada de sincronização (9h e 15h no PC)."""
+    """Registro de cada rodada de sincronização (9h no PC)."""
     __tablename__ = "ft_pop_syncs"
     id = Column(String, primary_key=True, default=gen_id)
     em = Column(DateTime, default=datetime.utcnow)

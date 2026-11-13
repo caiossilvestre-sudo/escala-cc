@@ -196,7 +196,7 @@ export default function Procedimentos({ acesso }) {
         )}
 
         {!busca && (dados ? (dados.pops.length ? <Lista pops={dados.pops} /> : (
-          <div className="card empty">Nenhum POP sincronizado ainda. A atualização acontece às 9h e às 15h.</div>
+          <div className="card empty">Nenhum POP sincronizado ainda. A atualização acontece todo dia às 9h.</div>
         )) : !erro && <Spinner />)}
       </div>
 

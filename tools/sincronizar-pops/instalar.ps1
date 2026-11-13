@@ -1,4 +1,4 @@
-﻿# Instala a sincronização dos POPs: guarda a chave (cifrada) e cria a tarefa das 9h e 15h.
+﻿# Instala a sincronização dos POPs: guarda a chave (cifrada) e cria a tarefa diária das 9h.
 # Não precisa de administrador.
 $ErrorActionPreference = 'Stop'
 $Aqui   = $PSScriptRoot
@@ -14,15 +14,12 @@ Write-Host 'Chave guardada (cifrada para o seu usuário do Windows).' -Foregroun
 
 $acao = New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Script`"" -WorkingDirectory $Aqui
-$gatilhos = @(
-    (New-ScheduledTaskTrigger -Daily -At '09:00'),
-    (New-ScheduledTaskTrigger -Daily -At '15:00')
-)
+$gatilhos = New-ScheduledTaskTrigger -Daily -At '09:00'
 $config = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1) -Priority 7 -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $Nome -Action $acao -Trigger $gatilhos -Settings $config `
-    -Description 'Envia ao sistema Suporte Técnico os POPs que mudaram na pasta do OneDrive (9h e 15h).' -Force | Out-Null
-Write-Host "Tarefa '$Nome' criada: todo dia às 9h e às 15h." -ForegroundColor Green
+    -Description 'Envia ao sistema Suporte Técnico os POPs que mudaram na pasta do OneDrive (todo dia às 9h).' -Force | Out-Null
+Write-Host "Tarefa '$Nome' criada: todo dia às 9h." -ForegroundColor Green
 Write-Host '(Se o PC estiver desligado no horário, roda assim que ligar.)'
 Write-Host ''
 $r = Read-Host 'Fazer a primeira sincronização agora? Envia todos os PDFs uma vez, leva alguns minutos. (S/N)'

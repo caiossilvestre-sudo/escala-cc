@@ -3,7 +3,7 @@
 Dentro do prefixo /ferramentas, já liberado no Nginx (não mexe no escala.conf).
 
 Dois tipos de acesso:
-  - /sync/*  → o script do PC (9h e 15h). Sem login: chave no cabeçalho
+  - /sync/*  → o script do PC (9h). Sem login: chave no cabeçalho
                X-API-Key = FERRAMENTAS_POPS_CHAVE do .env do backend.
   - o resto  → pessoas logadas com a permissão "procedimentos.consultar".
 """

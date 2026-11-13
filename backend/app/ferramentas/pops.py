@@ -1,6 +1,6 @@
 """Procedimentos (POPs): leitura dos PDFs e busca.
 
-Os PDFs chegam do PC do Caio (script agendado às 9h e 15h que lê a pasta do
+Os PDFs chegam do PC do Caio (script agendado todo dia às 9h que lê a pasta do
 OneDrive sincronizada com o SharePoint do CRL). Aqui:
   - o PDF é guardado em disco (FERRAMENTAS_POPS_DIR);
   - o texto é separado em trechos por seção (títulos em negrito), cada um com
