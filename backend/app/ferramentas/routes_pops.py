@@ -133,7 +133,7 @@ def sync_fim(body: FimIn, db: Session = Depends(get_db)):
 def _pop_dict(p: FtPop) -> dict:
     return {"id": p.id, "codigo": p.codigo, "titulo": p.titulo, "versao": p.versao, "pasta": p.pasta,
             "caminho": p.caminho, "paginas": p.paginas, "erro": bool(p.erro),
-            "link": P.link_sharepoint(p.caminho), "atualizado_em": p.sincronizado_em}
+            "atualizado_em": p.sincronizado_em}
 
 
 @router.get("")
@@ -181,12 +181,24 @@ def vizinhos(trecho_id: str, db: Session = Depends(get_db), user: Colaborador = 
 
 @router.get("/arquivo/{nome}")
 def arquivo(nome: str, user: Colaborador = Depends(CONSULTAR)):
-    """Print (.jpg) ou PDF de um POP. Nome gerado pelo próprio sistema."""
+    """Print (.jpg) de um POP. Nome gerado pelo próprio sistema."""
     caminho = P.nome_arquivo_seguro(nome)
     if not caminho or not caminho.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Arquivo não encontrado.")
-    tipo = "application/pdf" if nome.endswith(".pdf") else "image/jpeg"
-    return Response(caminho.read_bytes(), media_type=tipo, headers={"Cache-Control": "private, max-age=3600"})
+    return Response(caminho.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/{pop_id}/pagina/{n}")
+def pagina(pop_id: str, n: int, db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)):
+    """Página do POP como imagem: o visualizador do sistema mostra o documento
+    sempre na versão sincronizada, sem entregar o PDF para download."""
+    pop = db.get(FtPop, pop_id)
+    if not pop:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Procedimento não encontrado.")
+    jpg = P.pagina_jpg(pop.id, n)
+    if not jpg:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Página não encontrada.")
+    return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/buscas-sem-resultado")

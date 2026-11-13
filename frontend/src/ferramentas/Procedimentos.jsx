@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { ErrorBox, Spinner, TopBar } from "../components/UI";
 import { dataHora } from "./util";
@@ -57,7 +57,7 @@ function Trecho({ t, termos, onAbrir }) {
   );
 }
 
-function Resultado({ r, termos, onAbrir }) {
+function Resultado({ r, termos, onAbrir, onVer }) {
   const [viz, setViz] = useState(null);
   const verMais = () => api.get(`/ferramentas/pops/trecho/${r.trecho_id}/vizinhos`).then(setViz).catch(() => setViz([]));
   const antes = viz?.filter((v) => v.antes) || [];
@@ -72,7 +72,7 @@ function Resultado({ r, termos, onAbrir }) {
           </div>
           <div className="pr-res-onde">{r.secao || "Início do documento"}{r.pagina ? ` · página ${r.pagina}` : ""}</div>
         </div>
-        <a className="btn btn-ghost btn-sm" href={r.link} target="_blank" rel="noopener noreferrer">Abrir PDF ↗</a>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onVer(r, r.pagina || 1)}>Abrir POP{r.pagina ? ` na página ${r.pagina}` : ""}</button>
       </header>
       {antes.map((v) => <div key={v.id} className="pr-viz"><div className="pr-res-onde">{v.secao} · página {v.pagina}</div><Trecho t={v} termos={termos} onAbrir={onAbrir} /></div>)}
       <Trecho t={r} termos={termos} onAbrir={onAbrir} />
@@ -82,7 +82,60 @@ function Resultado({ r, termos, onAbrir }) {
   );
 }
 
-function Lista({ pops }) {
+/** Visualizador do POP dentro do sistema: páginas como imagem, sempre da versão
+ *  sincronizada. Não entrega o PDF (sem botão de baixar/imprimir do navegador). */
+function Pagina({ popId, n, refFn }) {
+  const caixa = useRef(null);
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return undefined;
+    let vivo = true, pedido = false;
+    const obs = new IntersectionObserver((ents) => {
+      if (pedido || !ents.some((e) => e.isIntersecting)) return;
+      pedido = true;
+      api.blob(`/ferramentas/pops/${popId}/pagina/${n}`).then((b) => { if (vivo) setUrl(URL.createObjectURL(b)); }).catch(() => {});
+    }, { rootMargin: "600px 0px" });
+    obs.observe(el);
+    return () => { vivo = false; obs.disconnect(); };
+  }, [popId, n]);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  return (
+    <div className="pr-pag" ref={(el) => { caixa.current = el; refFn?.(el); }}>
+      {url ? <img src={url} alt={`Página ${n}`} draggable={false} /> : <div className="pr-pag-vazia">Página {n}</div>}
+    </div>
+  );
+}
+
+function Visualizador({ pop, paginaInicial, onFechar }) {
+  const paginas = useRef({});
+  useEffect(() => {
+    const tecla = (e) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", tecla);
+    const t = setTimeout(() => paginas.current[paginaInicial]?.scrollIntoView({ block: "start" }), 50);
+    return () => { window.removeEventListener("keydown", tecla); clearTimeout(t); };
+  }, [paginaInicial, onFechar]);
+  const total = pop.paginas || 1;
+  return (
+    <div className="pr-vis" role="dialog" aria-label={pop.titulo} onContextMenu={(e) => e.preventDefault()}>
+      <div className="pr-vis-topo">
+        <div className="pr-res-cod">
+          {pop.codigo && <span className="pill ft-life">{pop.codigo}{pop.versao ? ` v${pop.versao}` : ""}</span>}
+          <h3>{pop.titulo}</h3>
+          <span className="pr-res-onde">{total} página{total > 1 ? "s" : ""}{pop.atualizado_em ? ` · versão do sistema de ${dataHora(pop.atualizado_em)}` : ""}</span>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onFechar}>✕ Fechar</button>
+      </div>
+      <div className="pr-vis-corpo">
+        {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
+          <Pagina key={n} popId={pop.id} n={n} refFn={(el) => { paginas.current[n] = el; }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Lista({ pops, onVer }) {
   const [filtro, setFiltro] = useState("");
   const grupos = useMemo(() => {
     const f = semAcento(filtro.trim());
@@ -104,11 +157,11 @@ function Lista({ pops }) {
         <div key={pasta} className="pr-grupo">
           <div className="pr-grupo-nome">{pasta}</div>
           {itens.map((p) => (
-            <a key={p.id} className="pr-item" href={p.link} target="_blank" rel="noopener noreferrer">
+            <button key={p.id} type="button" className="pr-item" onClick={() => onVer(p, 1)}>
               <span className="mono">{p.codigo ? `${p.codigo}${p.versao ? ` v${p.versao}` : ""}` : "—"}</span>
               <span>{p.titulo}</span>
-              <span aria-hidden="true">↗</span>
-            </a>
+              <span aria-hidden="true">›</span>
+            </button>
           ))}
         </div>
       ))}
@@ -143,6 +196,9 @@ export default function Procedimentos({ acesso }) {
   const [busca, setBusca] = useState(null); // { q, termos, resultados } | "carregando"
   const [ampliada, setAmpliada] = useState(null);
   const [verSem, setVerSem] = useState(false);
+  const [vendo, setVendo] = useState(null); // { pop, pagina }
+  const ver = (pop, pagina) => setVendo({ pop, pagina });
+  const fecharVer = useCallback(() => setVendo(null), []);
   const campo = useRef(null);
 
   useEffect(() => { api.get("/ferramentas/pops").then(setDados).catch((e) => setErro(e.message)); }, []);
@@ -163,7 +219,7 @@ export default function Procedimentos({ acesso }) {
     <>
       <TopBar
         title="Ferramentas · Procedimentos"
-        subtitle={dados ? `${dados.pops.length} POPs${dados.ultima_sync ? ` · atualizado em ${dataHora(dados.ultima_sync)}` : ""}` : "POPs do SharePoint"}
+        subtitle={dados ? `${dados.pops.length} POPs${dados.ultima_sync ? ` · atualizado em ${dataHora(dados.ultima_sync)}` : ""}` : "Procedimentos operacionais"}
         right={acesso?.tem("ft.admin") ? <button className="btn btn-ghost" onClick={() => setVerSem(true)}>Perguntas sem resposta</button> : null}
       />
       <div className="content">
@@ -184,8 +240,8 @@ export default function Procedimentos({ acesso }) {
         {busca && busca !== "carregando" && (
           busca.resultados.length ? (
             <div className="pr-resultados">
-              <p className="pr-dica">Trechos mais próximos da dúvida, direto dos POPs. Confira sempre o PDF completo.</p>
-              {busca.resultados.map((r) => <Resultado key={r.trecho_id} r={r} termos={busca.termos} onAbrir={setAmpliada} />)}
+              <p className="pr-dica">Trechos mais próximos da dúvida, direto dos POPs. Abra o POP para ver o procedimento completo.</p>
+              {busca.resultados.map((r) => <Resultado key={r.trecho_id} r={r} termos={busca.termos} onAbrir={setAmpliada} onVer={ver} />)}
             </div>
           ) : (
             <div className="card empty">
@@ -195,7 +251,7 @@ export default function Procedimentos({ acesso }) {
           )
         )}
 
-        {!busca && (dados ? (dados.pops.length ? <Lista pops={dados.pops} /> : (
+        {!busca && (dados ? (dados.pops.length ? <Lista pops={dados.pops} onVer={ver} /> : (
           <div className="card empty">Nenhum POP sincronizado ainda. A atualização acontece todo dia às 9h.</div>
         )) : !erro && <Spinner />)}
       </div>
@@ -205,6 +261,7 @@ export default function Procedimentos({ acesso }) {
           <img src={ampliada} alt="Print ampliado" />
         </div>
       )}
+      {vendo && <Visualizador pop={vendo.pop} paginaInicial={vendo.pagina} onFechar={fecharVer} />}
       {verSem && <SemResposta onFechar={() => setVerSem(false)} />}
     </>
   );
