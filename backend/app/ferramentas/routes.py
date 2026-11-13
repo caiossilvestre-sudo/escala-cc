@@ -838,3 +838,7 @@ router.include_router(_passagem_router)
 from app.ferramentas.routes_acessos import router as _acessos_router  # noqa: E402
 
 router.include_router(_acessos_router)
+
+from app.ferramentas.routes_pops import router as _pops_router  # noqa: E402
+
+router.include_router(_pops_router)

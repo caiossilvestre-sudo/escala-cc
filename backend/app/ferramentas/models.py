@@ -275,3 +275,57 @@ class FtSolicitacao(Base):
     criado_em = Column(DateTime, default=datetime.utcnow, index=True)
     tratado_por_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
     tratado_em = Column(DateTime, nullable=True)
+
+
+# ------------------------------------------------------ Procedimentos (POPs)
+class FtPop(Base):
+    """Um PDF de procedimento, enviado pelo PC do Caio a partir da pasta do
+    OneDrive (que espelha o SharePoint). "caminho" é relativo à pasta
+    "03 - Procedimentos Operacionais" e é a chave da sincronização."""
+    __tablename__ = "ft_pops"
+    id = Column(String, primary_key=True, default=gen_id)
+    caminho = Column(String, nullable=False, unique=True, index=True)
+    pasta = Column(String, nullable=True)
+    codigo = Column(String, nullable=True, index=True)
+    titulo = Column(String, nullable=False)
+    versao = Column(String, nullable=True)
+    tamanho = Column(Integer, nullable=True)
+    modificado = Column(String, nullable=True)   # data do arquivo no PC (segundos Unix, como texto)
+    sha256 = Column(String, nullable=True)
+    paginas = Column(Integer, nullable=True)
+    erro = Column(Text, nullable=True)           # falha na leitura do PDF (o arquivo fica, sem trechos)
+    sincronizado_em = Column(DateTime, default=datetime.utcnow)
+
+
+class FtPopTrecho(Base):
+    """Pedaço de um POP (uma seção ou parte dela) com os prints daquela parte."""
+    __tablename__ = "ft_pop_trechos"
+    id = Column(String, primary_key=True, default=gen_id)
+    pop_id = Column(String, ForeignKey("ft_pops.id"), nullable=False, index=True)
+    ordem = Column(Integer, nullable=False)
+    pagina = Column(Integer, nullable=True)
+    secao = Column(String, nullable=True)
+    texto = Column(Text, nullable=False)
+    imagens = Column(JSON, nullable=True)        # nomes dos arquivos .jpg na pasta dos POPs
+
+
+class FtPopSync(Base):
+    """Registro de cada rodada de sincronização (9h e 15h no PC)."""
+    __tablename__ = "ft_pop_syncs"
+    id = Column(String, primary_key=True, default=gen_id)
+    em = Column(DateTime, default=datetime.utcnow)
+    maquina = Column(String, nullable=True)
+    total = Column(Integer, nullable=True)
+    enviados = Column(Integer, nullable=True)
+    removidos = Column(Integer, nullable=True)
+    erros = Column(JSON, nullable=True)
+
+
+class FtPopBusca(Base):
+    """Perguntas feitas na busca: as que não acham nada mostram que POP falta."""
+    __tablename__ = "ft_pop_buscas"
+    id = Column(String, primary_key=True, default=gen_id)
+    colaborador_id = Column(String, ForeignKey("colaboradores.id"), nullable=True)
+    termo = Column(String, nullable=False)
+    resultados = Column(Integer, nullable=False, default=0)
+    em = Column(DateTime, default=datetime.utcnow)

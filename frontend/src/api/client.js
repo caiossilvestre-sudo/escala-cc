@@ -34,7 +34,7 @@ async function refreshAccessToken() {
   return data;
 }
 
-async function request(path, { method = "GET", body, retry = true } = {}) {
+async function request(path, { method = "GET", body, retry = true, blob = false } = {}) {
   const res = await fetch(`${API_URL}${path}`, {
     method,
     credentials: "include",
@@ -50,7 +50,7 @@ async function request(path, { method = "GET", body, retry = true } = {}) {
   if (res.status === 401 && retry && path !== "/auth/login") {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
-      return request(path, { method, body, retry: false });
+      return request(path, { method, body, retry: false, blob });
     }
     onSessionExpired();
     throw new Error("Sessão expirada.");
@@ -68,7 +68,7 @@ async function request(path, { method = "GET", body, retry = true } = {}) {
   }
 
   if (res.status === 204) return null;
-  return res.json();
+  return blob ? res.blob() : res.json();
 }
 
 export const api = {
@@ -76,5 +76,6 @@ export const api = {
   post: (path, body) => request(path, { method: "POST", body }),
   patch: (path, body) => request(path, { method: "PATCH", body }),
   delete: (path) => request(path, { method: "DELETE" }),
+  blob: (path) => request(path, { blob: true }),  // arquivo (imagem/PDF) com o token da sessão
   API_URL,
 };
