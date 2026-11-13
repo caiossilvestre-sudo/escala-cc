@@ -23,7 +23,7 @@ PERMISSOES = {
     "passagem.gerenciar": "Passagem de plantão · painel do gestor, editar e excluir qualquer registro",
     "acessos.usar": "Acessos do setor · consultar links e senhas, incluir e alterar o que a própria pessoa cadastrou",
     "acessos.gerenciar": "Acessos do setor · alterar qualquer item/senha e organizar as seções",
-    "procedimentos.consultar": "Procedimentos · consultar os POPs do próprio setor (N1: Uso comum + N1; N2 e Monitoramento: Uso comum + N2 + Monitoramento)",
+    "procedimentos.consultar": "Procedimentos · consultar os POPs do próprio setor (já liberado automaticamente para N1, N2 e Monitoramento)",
     "procedimentos.todos": "Procedimentos · consultar os POPs de todos os setores",
     "escalation.infra": "Escalation · Infraestrutura (link externo)",
     "escalation.n2": "Escalation · Operações (N2)",
@@ -59,7 +59,14 @@ def permissoes_do(db: Session, user: Colaborador) -> set[str]:
     if user.role == "admin":
         return set(PERMISSOES)
     a = db.get(FtAcesso, user.id)
-    return set(normalizar_permissoes(a.permissoes)) if a else set()
+    perms = set(normalizar_permissoes(a.permissoes)) if a else set()
+    # Procedimentos: N1, N2 e Monitoramento consultam os POPs do próprio setor
+    # sem precisar liberar pessoa por pessoa (o filtro por setor fica em pops.py).
+    from app.ferramentas.pops import grupo_da_equipe
+    equipes = [user.equipe] + (list(user.equipes_gerenciadas or []) if user.role == "supervisor" else [])
+    if any(grupo_da_equipe(e) for e in equipes):
+        perms.add("procedimentos.consultar")
+    return perms
 
 
 def exigir(permissao: str):

@@ -129,7 +129,7 @@ export default function Permissoes({ onVoltar, showToast }) {
             <dt>Acessos do setor</dt>
             <dd><b>Usar</b> ver links e senhas, incluir e alterar o que a própria pessoa cadastrou · <b>Editar tudo</b> alterar qualquer item/senha e organizar as seções</dd>
             <dt>Procedimentos</dt>
-            <dd><b>Consultar</b> buscar e abrir os POPs do próprio setor (N1: Uso comum + N1 · N2 e Monitoramento: Uso comum + N2 + Monitoramento) · <b>Todos os setores</b> ver os POPs de todos (coordenação, supervisão)</dd>
+            <dd><b>Consultar</b> buscar e abrir os POPs do próprio setor (N1: Uso comum + N1 · N2 e Monitoramento: Uso comum + N2 + Monitoramento) — já vale automaticamente para quem é dessas equipes; marque só para outras pessoas · <b>Todos os setores</b> ver os POPs de todos (coordenação, supervisão)</dd>
             <dt>Escalation</dt>
             <dd><b>Infraestrutura</b> link externo de escalation · <b>Operações (N2)</b> página do N2 (em construção)</dd>
             <dt>Administração</dt>
