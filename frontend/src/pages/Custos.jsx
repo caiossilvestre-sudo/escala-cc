@@ -270,8 +270,15 @@ function Capacidade({ showToast }) {
     if (!v) return null;
     const horas = (v.telefone * fv * Math.max(0, v.tma_tel_seg + tmaSeg) + (v.whatsapp * fv * Math.max(0, v.tma_wa_seg + tmaSeg)) / cap.wa_concorrencia) / 3600;
     const prod = cap.horas_mes * (1 - absPct / 100) * (cap.ocupacao_pct / 100);
-    const precisa = Math.ceil(horas / prod - 0.05);
-    return { horas, prod, precisa, atend: Math.round((v.telefone + v.whatsapp) * fv), sobra: seg.pessoas - precisa };
+    const pelaCarga = Math.ceil(horas / prod - 0.05);
+    // Cobertura: mínimo de pessoas simultâneas durante todo o horário de funcionamento, já com folgas e absenteísmo.
+    const horasSemana = seg.horas_operacao_dia * cap.dias_operacao_semana;
+    const pelaCobertura = seg.cobertura_min > 0 ? Math.ceil((seg.cobertura_min * horasSemana) / (cap.horas_semana_pessoa * (1 - absPct / 100)) - 0.05) : 0;
+    const precisa = Math.max(pelaCarga, pelaCobertura);
+    const horasOperacaoMes = seg.horas_operacao_dia * cap.dias_operados_mes;
+    return { horas, prod, pelaCarga, pelaCobertura, precisa, atend: Math.round((v.telefone + v.whatsapp) * fv), sobra: seg.pessoas - precisa,
+      simCarga: horasOperacaoMes ? horas / horasOperacaoMes : 0,
+      simQuadro: horasSemana ? (seg.pessoas * cap.horas_semana_pessoa * (1 - absPct / 100)) / horasSemana : 0 };
   };
   const linhas = cap.segmentos.map((seg) => ({ seg, base: calc(seg, 1, 0, cap.absenteismo_pct), sim: calc(seg, 1 + dVol / 100, dTma, cap.absenteismo_pct + dAbs) })).filter((l) => l.base);
   const totAtendBase = linhas.reduce((s, l) => s + l.base.atend, 0);
@@ -283,6 +290,7 @@ function Capacidade({ showToast }) {
   const cpa = (custo, atend) => (temCusto && atend ? brl(custo / atend, 2) : "—");
   const semCusto = [...cap.segmentos, cap.monitoramento].reduce((s, g) => s + (g.sem_custo || 0), 0);
   const parcial = cap.segmentos.some((s) => s.volume?.projetado);
+  const semCobertura = linhas.length > 0 && linhas.every((l) => !(l.seg.cobertura_min > 0));
   const sit = (n) => (n > 0 ? <span style={{ color: "#1F5C3A", fontWeight: 600 }}>{n} sobrando</span> : n < 0 ? <span style={{ color: "#A32E42", fontWeight: 600 }}>{-n} faltando</span> : "equilibrado");
   return (
     <>
@@ -308,6 +316,7 @@ function Capacidade({ showToast }) {
       </div>
       {linhas.length === 0 ? <div className="empty">Sem volume por setor ainda. Clique em "Buscar do Checkpoint" para o mês escolhido.</div> : (
         <>
+          {semCobertura && <div className="info-box"><strong>Cobertura mínima ainda não definida.</strong> Por enquanto o cálculo olha só o volume, e por isso pode mostrar gente sobrando que na verdade é necessária para cobrir a escala. As horas de funcionamento já vêm do horário dos colaboradores; falta definir, em Acessos e parâmetros, o mínimo de pessoas simultâneas de N1 e de N2.</div>}
           {parcial && <div className="info-box">{cap.mes} ainda está em andamento: o volume foi projetado para o mês inteiro com base nos dias já preenchidos.</div>}
           {cap.tma_wa_estimado && <div className="info-box">O WhatsApp está calculado com TMA estimado, porque ainda não há o TMA real. Ajuste a estimativa em Acessos e parâmetros.</div>}
           {!temCusto && <div className="info-box">Ainda não há custos cadastrados, então o custo por atendimento aparece como "—". Cadastre em Cadastro de custos.</div>}
@@ -331,17 +340,34 @@ function Capacidade({ showToast }) {
           </Linha>
           <div className="card">
             <div className="section-title">Por setor</div>
-            <table className="tbl"><thead><tr><th>Setor</th><th style={{ textAlign: "right" }}>Atendimentos</th><th style={{ textAlign: "right" }}>Carga</th><th style={{ textAlign: "right" }}>Precisa</th><th style={{ textAlign: "right" }}>Quadro</th><th>Situação</th><th style={{ textAlign: "right" }}>Custo no mês</th></tr></thead>
+            <table className="tbl"><thead><tr><th>Setor</th><th style={{ textAlign: "right" }}>Atendimentos</th><th style={{ textAlign: "right" }}>Carga</th><th style={{ textAlign: "right" }}>Pelo volume</th><th style={{ textAlign: "right" }}>Pela cobertura</th><th style={{ textAlign: "right" }}>Precisa</th><th style={{ textAlign: "right" }}>Quadro</th><th>Situação</th><th style={{ textAlign: "right" }}>Custo no mês</th></tr></thead>
               <tbody>
                 {linhas.map((l) => (
                   <tr key={l.seg.chave}><td><strong>{l.seg.nome}</strong><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>TMA tel {mm(l.seg.volume.tma_tel_seg)}</div></td>
                     <td className="mono" style={{ textAlign: "right" }}>{nint(l.sim.atend)}</td><td className="mono" style={{ textAlign: "right" }}>{Math.round(l.sim.horas)} h</td>
-                    <td className="mono" style={{ textAlign: "right" }}>{l.sim.precisa}</td><td className="mono" style={{ textAlign: "right" }}>{l.seg.pessoas}</td><td>{sit(l.sim.sobra)}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{l.sim.pelaCarga}</td><td className="mono" style={{ textAlign: "right" }}>{l.sim.pelaCobertura || "—"}</td><td className="mono" style={{ textAlign: "right" }}><strong>{l.sim.precisa}</strong></td><td className="mono" style={{ textAlign: "right" }}>{l.seg.pessoas}</td><td>{sit(l.sim.sobra)}<div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{l.sim.pelaCobertura > l.sim.pelaCarga ? "Quem manda é a cobertura" : "Quem manda é o volume"} · simultâneos: volume pede {l.sim.simCarga.toFixed(1).replace(".", ",")}, quadro dá {l.sim.simQuadro.toFixed(1).replace(".", ",")}</div></td>
                     <td className="mono" style={{ textAlign: "right" }}>{l.seg.custo_mensal ? brl(l.seg.custo_mensal) : "—"}</td></tr>
                 ))}
-                <tr><td><strong>{cap.monitoramento.nome}</strong><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Estrutura: não varia com o volume</div></td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.pessoas}</td><td>—</td><td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.custo_mensal ? brl(cap.monitoramento.custo_mensal) : "—"}</td></tr>
-                <tr><td><strong>Demais setores e equipamentos</strong></td><td /><td /><td /><td /><td /><td className="mono" style={{ textAlign: "right" }}>{cap.outros_custo_mensal ? brl(cap.outros_custo_mensal) : "—"}</td></tr>
+                <tr><td><strong>{cap.monitoramento.nome}</strong><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>12x36, cobertura 24h x 7 dias · mínimo de {cap.monitoramento.cobertura_min} simultâneo(s)</div></td>
+                  <td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>—</td>
+                  <td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.precisa || "—"}</td><td className="mono" style={{ textAlign: "right" }}><strong>{cap.monitoramento.precisa || "—"}</strong></td>
+                  <td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.pessoas}</td><td>{cap.monitoramento.precisa ? sit(cap.monitoramento.pessoas - cap.monitoramento.precisa) : "—"}<div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Não varia com o volume de atendimento</div></td>
+                  <td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.custo_mensal ? brl(cap.monitoramento.custo_mensal) : "—"}</td></tr>
+                <tr><td><strong>Demais setores e equipamentos</strong></td><td /><td /><td /><td /><td /><td /><td /><td className="mono" style={{ textAlign: "right" }}>{cap.outros_custo_mensal ? brl(cap.outros_custo_mensal) : "—"}</td></tr>
               </tbody></table>
+          </div>
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="section-title">Gente em serviço por hora</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>Média da semana, calculada com o expediente, o intervalo, o tipo de escala (folgas) e o absenteísmo de cada colaborador no cadastro. Mostra onde o quadro tem fôlego e onde está no limite.</div>
+            <div style={{ overflowX: "auto" }}>
+              <table className="tbl" style={{ minWidth: 900 }}>
+                <thead><tr><th>Setor</th>{Array.from({ length: 24 }, (_, h) => <th key={h} style={{ textAlign: "center", padding: "6px 2px" }}>{String(h).padStart(2, "0")}</th>)}</tr></thead>
+                <tbody>{[...linhas.map((l) => [l.seg.nome, l.seg.perfil]), [cap.monitoramento.nome, cap.monitoramento.perfil]].map(([nome, perfil]) => {
+                  const mx = Math.max(...perfil, 1);
+                  return <tr key={nome}><td><strong>{nome}</strong></td>{perfil.map((x, h) => <td key={h} className="mono" style={{ textAlign: "center", padding: "6px 2px", fontSize: 11.5, background: x > 0 ? `rgba(232,117,46,${0.08 + 0.5 * (x / mx)})` : "transparent", color: x > 0 ? "inherit" : "var(--text-muted)" }}>{x > 0 ? String(x).replace(".", ",") : "·"}</td>)}</tr>;
+                })}</tbody>
+              </table>
+            </div>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>Menos volume só vira economia se a capacidade que sobra for realocada ou desligada.</div>
         </>
@@ -441,7 +467,7 @@ function Ausencias() {
 const ROTULOS = {
   encargos_pct: "Encargos + provisão férias/13º (% sobre salário e adicionais)", horas_mes: "Horas de trabalho por pessoa no mês", absenteismo_pct: "Absenteísmo (%)",
   ocupacao_pct: "Ocupação-alvo (%)", wa_concorrencia: "Conversas simultâneas no WhatsApp", setores_diretos: "Setores de atendimento direto (separados por vírgula, igual ao cadastro)",
-  tma_wa_estimado_seg: "TMA estimado do WhatsApp, em segundos (usado enquanto não houver o real)", setor_n1: "Nome do setor N1 no cadastro do Escala", setor_n2: "Nome do setor N2 no cadastro do Escala", setor_monitoramento: "Nome do setor Monitoramento no cadastro do Escala", dias_operados_mes: "Dias com atendimento no mês (para projetar mês em andamento)", rescisao_encargos_pct: "Encargos patronais sobre verbas da rescisão (%)", recrutamento: "Custo de recrutamento e seleção (R$)", cobertura_vaga: "Cobertura da vaga durante aviso/seleção (R$)",
+  tma_wa_estimado_seg: "TMA estimado do WhatsApp, em segundos (usado enquanto não houver o real)", cobertura_min_n1: "N1: mínimo de pessoas atendendo ao mesmo tempo (0 = não definido)", cobertura_min_n2: "N2: mínimo de pessoas atendendo ao mesmo tempo (0 = não definido)", horas_operacao_dia_n1: "N1: horas por dia de funcionamento (0 = automático, pelo horário dos colaboradores)", horas_operacao_dia_n2: "N2: horas por dia de funcionamento (0 = automático, pelo horário dos colaboradores)", dias_operacao_semana: "Dias de funcionamento por semana", horas_semana_pessoa: "Horas semanais de cada pessoa de N1 e N2 (hoje 36)", cobertura_min_monitoramento: "Monitoramento: mínimo de pessoas ao mesmo tempo, 24h x 7 dias", horas_semana_monitoramento: "Horas semanais médias de cada pessoa do Monitoramento (12x36 = 42)", setor_n1: "Nome do setor N1 no cadastro do Escala", setor_n2: "Nome do setor N2 no cadastro do Escala", setor_monitoramento: "Nome do setor Monitoramento no cadastro do Escala", dias_operados_mes: "Dias com atendimento no mês (para projetar mês em andamento)", rescisao_encargos_pct: "Encargos patronais sobre verbas da rescisão (%)", recrutamento: "Custo de recrutamento e seleção (R$)", cobertura_vaga: "Cobertura da vaga durante aviso/seleção (R$)",
   exp_etapa1_dias: "Experiência, etapa 1 (dias)", exp_etapa1_prod_pct: "Produtividade na etapa 1 (%)", exp_etapa2_dias: "Experiência, etapa 2 (dias)", exp_etapa2_prod_pct: "Produtividade na etapa 2 (%)",
 };
 function Config({ showToast }) {

@@ -38,6 +38,10 @@ PARAMS_PADRAO = {
     "tma_wa_estimado_seg": "700",  # TMA do WhatsApp usado enquanto o Checkpoint não informar (700 s = 11:40)
     "setores_diretos": "Suporte N1,Suporte N2",
     "setor_n1": "Suporte N1", "setor_n2": "Suporte N2", "setor_monitoramento": "Monitoramento",   # nomes dos setores no cadastro do Escala
+    "horas_operacao_dia_n1": "0", "horas_operacao_dia_n2": "0",  # 0 = automático (pelo horário dos colaboradores do setor)
+    "dias_operacao_semana": "6", "horas_semana_pessoa": "36",     # N1 e N2 trabalham 36 h por semana
+    "cobertura_min_n1": "0", "cobertura_min_n2": "0",              # mínimo de pessoas atendendo ao mesmo tempo (0 = não definido)
+    "cobertura_min_monitoramento": "1", "horas_semana_monitoramento": "42",  # 12x36 = 42 h/semana em média; 24x7 com 1 pessoa no mínimo
     "dias_operados_mes": "26",     # dias em que há atendimento no mês (projeção de mês em andamento)
     "rescisao_encargos_pct": "28", # INSS patronal + RAT + terceiros sobre aviso/13º
     "recrutamento": "1500",
@@ -454,6 +458,59 @@ def _ultima_sync(db: Session):
     return {"quando": q, "origem": origem, "ok": st == "ok", "msg": msg}
 
 
+# ---------------- cobertura real pela escala ----------------
+def _fracao_dias(escala_tipo: str) -> float:
+    """Parte dos dias em que a pessoa trabalha (6x1 = 6/7, 5x2 = 5/7, 12x36 = 1/2)."""
+    import re
+    m = re.match(r"^\s*(\d+)\s*x\s*(\d+)\s*$", escala_tipo or "")
+    if not m:
+        return 6 / 7
+    a, b = int(m.group(1)), int(m.group(2))
+    if a == 12 and b == 36:
+        return 0.5
+    return a / (a + b) if a + b else 6 / 7
+
+
+def _min(hhmm: str | None) -> int | None:
+    try:
+        h, m = (hhmm or "").split(":")
+        return int(h) * 60 + int(m)
+    except ValueError:
+        return None
+
+
+def _sobreposicao(ini: int, fim: int, h: int) -> float:
+    """Minutos do intervalo [ini, fim) (pode cruzar a meia-noite) que caem na hora h."""
+    if fim <= ini:
+        fim += 1440
+    total = 0
+    for off in (-1440, 0):
+        a, b = ini + off, fim + off
+        total += max(0, min(b, (h + 1) * 60) - max(a, h * 60))
+    return total / 60
+
+
+def perfil_horario(pessoas: list, abs_pct: float) -> tuple[list[float], list[bool]]:
+    """Pessoas em serviço em cada hora do dia (média da semana), pelo cadastro de colaboradores:
+    expediente, intervalo (descontado), tipo de escala (folgas) e absenteísmo."""
+    perfil, coberta = [0.0] * 24, [False] * 24
+    for c in pessoas:
+        ini, fim = _min(c.horario_inicio), _min(c.horario_fim)
+        if ini is None or fim is None:
+            continue
+        ii, ff = _min(c.intervalo_inicio), _min(c.intervalo_fim)
+        frac = _fracao_dias(c.escala_tipo) * (1 - abs_pct / 100)
+        for h in range(24):
+            t = _sobreposicao(ini, fim, h)
+            if t <= 0:
+                continue
+            coberta[h] = True
+            if ii is not None and ff is not None:
+                t = max(0.0, t - min(t, _sobreposicao(ii, ff, h)))
+            perfil[h] += t * frac
+    return [round(x, 1) for x in perfil], coberta
+
+
 # ---------------- capacidade ----------------
 @router.get("/capacidade")
 def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db)):
@@ -463,10 +520,14 @@ def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends
     enc = num(p, "encargos_pct")
     reg = {g.colaborador_id: g for g in db.query(GcPessoa).all()}
 
+    abs_pct = num(p, "absenteismo_pct")
+
     def grupo(nomes: list[str]):
         pess = [c for c in ativos if c.equipe in nomes]
+        perfil, coberta = perfil_horario(pess, abs_pct)
         custos = [custo_pessoa(reg[c.id], enc)["total"] for c in pess if c.id in reg]
-        return {"pessoas": len(pess), "sem_custo": len(pess) - len(custos), "custo_mensal": sum(custos),
+        return {"perfil": perfil, "horas_cobertas": sum(coberta),
+                "pessoas": len(pess), "sem_custo": len(pess) - len(custos), "custo_mensal": sum(custos),
                 "custo_medio": (sum(custos) / len(custos)) if custos else None}
 
     mensal_total = sum(custo_pessoa(g, enc)["total"] for c in ativos if (g := reg.get(c.id))) + _equip_mensal(db)[0]
@@ -482,20 +543,29 @@ def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends
             rotulo, equipe = nomes[chave]
             fator = (dias_op / gs.dias) if (gs and em_andamento and 0 < gs.dias < dias_op) else 1
             segmentos.append({"chave": chave, "nome": rotulo, "equipe": equipe, **grupo([equipe]),
+                              "cobertura_min": num(p, f"cobertura_min_{chave}"), "horas_operacao_dia": num(p, f"horas_operacao_dia_{chave}"),   # 0 = automático
                               "volume": None if not gs else {"telefone": round(gs.telefone * fator), "whatsapp": round(gs.whatsapp * fator),
                                                              "tma_tel_seg": gs.tma_tel_seg, "tma_wa_seg": tma_wa, "dias": gs.dias, "projetado": fator != 1}})
     elif v:
         diretos = [s.strip() for s in p["setores_diretos"].split(",") if s.strip()]
         segmentos.append({"chave": "total", "nome": "Atendimento direto", "equipe": ", ".join(diretos), **grupo(diretos),
+                          "cobertura_min": num(p, "cobertura_min_n1"), "horas_operacao_dia": num(p, "horas_operacao_dia_n1"),
                           "volume": {"telefone": v.telefone, "whatsapp": v.whatsapp, "tma_tel_seg": v.tma_tel_seg, "tma_wa_seg": tma_wa, "dias": 0, "projetado": False}})
     mon = {"nome": "Monitoramento", "equipe": p["setor_monitoramento"], **grupo([p["setor_monitoramento"]])}
+    mon_min, mon_h = num(p, "cobertura_min_monitoramento"), num(p, "horas_semana_monitoramento")
+    mon["cobertura_min"] = mon_min
+    mon["precisa"] = math.ceil(mon_min * 24 * 7 / mon_h / (1 - abs_pct / 100) - 0.05) if mon_min > 0 and mon_h > 0 else 0
+    for sg in segmentos:       # horas de funcionamento automáticas, quando o parâmetro está em 0
+        if not sg["horas_operacao_dia"]:
+            sg["horas_operacao_dia"] = sg["horas_cobertas"] or 12
     usados = {x["equipe"] for x in segmentos} | {p["setor_monitoramento"]}
     resto = sum(custo_pessoa(g, enc)["total"] for c in ativos if c.equipe not in usados and (g := reg.get(c.id)))
     return {
         "mes": mes, "segmentos": segmentos, "monitoramento": mon,
         "outros_custo_mensal": resto + _equip_mensal(db)[0],
         "horas_mes": num(p, "horas_mes"), "absenteismo_pct": num(p, "absenteismo_pct"), "ocupacao_pct": num(p, "ocupacao_pct"),
-        "wa_concorrencia": num(p, "wa_concorrencia"), "tma_wa_estimado": not (v and v.tma_wa_seg),
+        "wa_concorrencia": num(p, "wa_concorrencia"), "dias_operacao_semana": num(p, "dias_operacao_semana"),
+        "horas_semana_pessoa": num(p, "horas_semana_pessoa"), "dias_operados_mes": dias_op, "tma_wa_estimado": not (v and v.tma_wa_seg),
         "custo_mensal_total": mensal_total,
         "ultima_sync": _ultima_sync(db),
         "sync_ativa": bool(settings.checkpoint_api_key),
