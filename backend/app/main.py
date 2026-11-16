@@ -19,6 +19,8 @@ from app.core.rate_limit import limiter
 from app.core.security import hash_password
 from app.db.models import Colaborador
 from app.db.session import Base, SessionLocal, engine, run_safe_migrations
+from app.custos import router as custos_router
+from app.custos.routes import seed_acessos
 from app.ferramentas import router as ferramentas_router
 from app.middleware.security_headers import SecurityHeadersMiddleware
 
@@ -31,7 +33,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -49,6 +51,7 @@ app.include_router(routes_feriados.router, dependencies=_so_escala)
 app.include_router(routes_avisos.router)
 app.include_router(routes_configuracoes.router, dependencies=_so_escala)
 app.include_router(ferramentas_router)  # módulo Ferramentas (LifeGuard · Documentação)
+app.include_router(custos_router)  # Gestão de Custos — só quem está em gc_acessos
 
 
 @app.get("/health")
@@ -62,6 +65,7 @@ def on_startup():
     run_safe_migrations()
     db = SessionLocal()
     try:
+        seed_acessos(db)
         if db.query(Colaborador).count() == 0:
             admin_email = os.getenv("FIRST_ADMIN_EMAIL")
             admin_password = os.getenv("FIRST_ADMIN_PASSWORD")

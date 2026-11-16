@@ -18,6 +18,7 @@ import MeusPlantoes from "./pages/MeusPlantoes";
 import CronogramaEquipe from "./pages/CronogramaEquipe";
 import SolicitarFolga from "./pages/SolicitarFolga";
 import ChangePassword from "./pages/ChangePassword";
+import Custos from "./pages/Custos";
 import { FerramentasPagina, MenuFerramentas, PAGINAS_LIFEGUARD, useFerramentasAcesso } from "./ferramentas";
 
 const NAV_ADMIN = [
@@ -76,6 +77,16 @@ const NAV_COLAB = [
   ] },
   { grupo: "Comunicação", itens: [{ id: "avisos", label: "Painel de avisos" }] },
 ];
+
+// Gestão de Custos: só aparece para quem está liberado no backend (por e-mail), seja qual for o perfil.
+const NAV_CUSTOS = { grupo: "Gestão de custos", itens: [
+  { id: "gc-visao", label: "Visão geral dos custos" },
+  { id: "gc-capacidade", label: "Capacidade e volume" },
+  { id: "gc-desligamento", label: "Desligamento e reposição" },
+  { id: "gc-ausencias", label: "Ausências e folgas CCT" },
+  { id: "gc-cadastro", label: "Cadastro de custos" },
+  { id: "gc-config", label: "Acessos e parâmetros" },
+] };
 
 const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador", ferramentas: "Somente Ferramentas" };
 const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰", passagem_entrada: "📋" };
@@ -183,12 +194,17 @@ function Shell() {
   }, [user?.role, setTab]);
   useIdleLogout(logout, 15 * 60 * 1000, !!user);
   const ft = useFerramentasAcesso(user?.colaborador_id);
+  const [custosOk, setCustosOk] = useState(false);
+  useEffect(() => {
+    if (!user || user.role === "ferramentas") { setCustosOk(false); return; }
+    api.get("/custos/acesso").then((r) => setCustosOk(!!r.permitido)).catch(() => setCustosOk(false));
+  }, [user?.colaborador_id, user?.role]);
 
   if (loading) return null;
   if (!user) return <Login />;
 
   const navBase = isFerr ? [] : showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-  const nav = navBase;
+  const nav = custosOk ? [...navBase, NAV_CUSTOS] : navBase;
   const primeiroItem = isFerr ? PAGINAS_LIFEGUARD.find((p) => ft.tem(p.permissao))?.id : nav[0]?.itens[0]?.id;
   // Aba do endereço que não existe para este perfil -> página inicial
   const abaValida = tab && (tab === "senha" || tab.startsWith("lg-") || tab.startsWith("ft-") || nav.some((s) => s.itens.some((i) => i.id === tab)));
@@ -259,6 +275,7 @@ function Shell() {
           {activeTab === "cronograma-equipe" && !showAdminPages && !isSupervisor && <CronogramaEquipe user={user} />}
           {activeTab === "solicitar-folga" && !showAdminPages && <SolicitarFolga user={user} />}
           {activeTab === "minhas-ferias" && isSupervisor && <MinhasFerias user={user} />}
+          {custosOk && activeTab.startsWith("gc-") && <Custos tab={activeTab} />}
           {activeTab === "senha" && <ChangePassword />}
           <FerramentasPagina tab={activeTab} acesso={ft} />
           {isFerr && !PAGINAS_LIFEGUARD.some((p) => ft.tem(p.permissao)) && activeTab !== "senha" && (
