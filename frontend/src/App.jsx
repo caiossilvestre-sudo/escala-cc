@@ -95,7 +95,10 @@ const GRUPO_RODAPE = "Comunicação";
 
 function GrupoNav({ secao, activeTab, onIr }) {
   const fixo = GRUPOS_FIXOS.includes(secao.grupo);
-  const [aberto, setAberto] = useState(false); // sempre começa fechado; abre só quando você clica
+  const temAtivo = secao.itens.some((i) => i.id === activeTab);
+  const [aberto, setAberto] = useState(temAtivo);
+  // ao navegar para uma página do grupo (ex.: pelo Dashboard), ele abre sozinho
+  useEffect(() => { if (temAtivo) setAberto(true); }, [temAtivo]);
   const mostrar = fixo || aberto;
   return (
     <div className="nav-group">
