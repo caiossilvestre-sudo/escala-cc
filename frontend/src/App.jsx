@@ -204,7 +204,11 @@ function Shell() {
   if (!user) return <Login />;
 
   const navBase = isFerr ? [] : showAdminPages ? NAV_ADMIN : isSupervisor ? NAV_SUPERVISOR : NAV_COLAB;
-  const nav = custosOk ? [...navBase, NAV_CUSTOS] : navBase;
+  // As telas de custos entram dentro do grupo "Gestão" (ou viram o grupo, se o perfil não tiver um).
+  const nav = !custosOk ? navBase
+    : navBase.some((g) => g.grupo === "Gestão")
+      ? navBase.map((g) => (g.grupo === "Gestão" ? { ...g, itens: [...g.itens, ...NAV_CUSTOS.itens] } : g))
+      : [...navBase, NAV_CUSTOS];
   const primeiroItem = isFerr ? PAGINAS_LIFEGUARD.find((p) => ft.tem(p.permissao))?.id : nav[0]?.itens[0]?.id;
   // Aba do endereço que não existe para este perfil -> página inicial
   const abaValida = tab && (tab === "senha" || tab.startsWith("lg-") || tab.startsWith("ft-") || nav.some((s) => s.itens.some((i) => i.id === tab)));
