@@ -30,5 +30,10 @@ class Settings(BaseSettings):
     # volta num cabeçalho a cada consulta.
     teams_api_key: str = ""
 
+    # Integração (só leitura) com o Checkpoint, que roda no mesmo servidor.
+    # Sem a chave, a Gestão de Custos continua funcionando com volume digitado.
+    checkpoint_base_url: str = "http://127.0.0.1:8005"
+    checkpoint_api_key: str = ""
+
 
 settings = Settings()

@@ -5,7 +5,12 @@ Regras de privacidade:
 - A lista de pessoas nunca devolve valores; "revelar" devolve e grava no log.
 - Resumos por função/setor só mostram grupos com 3+ pessoas.
 """
+import calendar
+import json
 import math
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_colaborador
 from app.custos.models import GcAcesso, GcEquip, GcLog, GcParam, GcPessoa, GcVolume
+from app.core.config import settings
 from app.db.models import Atestado, Colaborador, Ferias, SolicitacaoFolga
 from app.db.session import get_db
 from app.logic import resumo_cotas_sindicato
@@ -29,6 +35,7 @@ PARAMS_PADRAO = {
     "absenteismo_pct": "8",
     "ocupacao_pct": "75",
     "wa_concorrencia": "2",        # conversas simultâneas no WhatsApp
+    "tma_wa_estimado_seg": "700",  # TMA do WhatsApp usado enquanto o Checkpoint não informar (700 s = 11:40)
     "setores_diretos": "Suporte N1,Suporte N2",
     "rescisao_encargos_pct": "28", # INSS patronal + RAT + terceiros sobre aviso/13º
     "recrutamento": "1500",
@@ -269,6 +276,63 @@ def salvar_volume(body: VolumeIn, user: Colaborador = Depends(exigir_acesso), db
     return listar_volume(user, db)
 
 
+# ---------------- integração com o Checkpoint ----------------
+def _buscar_checkpoint(de: date, ate: date) -> list[dict]:
+    if not settings.checkpoint_api_key:
+        raise HTTPException(503, "Integração não configurada: defina CHECKPOINT_API_KEY no .env do Escala.")
+    url = f"{settings.checkpoint_base_url.rstrip('/')}/api/integracao/volume?" + urllib.parse.urlencode({"de": de.isoformat(), "ate": ate.isoformat()})
+    req = urllib.request.Request(url, headers={"X-API-Key": settings.checkpoint_api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            dados = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise HTTPException(502, f"O Checkpoint recusou a consulta (HTTP {e.code}). Confira a chave CHECKPOINT_API_KEY.")
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        raise HTTPException(502, "Não consegui falar com o Checkpoint. Ele está no ar?")
+    if not isinstance(dados, list):
+        raise HTTPException(502, "Resposta inesperada do Checkpoint.")
+    return dados
+
+
+class SyncIn(BaseModel):
+    mes: str = Field(pattern=r"^\d{4}-\d{2}$")
+
+
+def _media(pares: list[tuple]) -> int:
+    """Média ponderada de (valor, peso); ignora quem não tem valor."""
+    pares = [(v, w) for v, w in pares if v is not None and w]
+    peso = sum(w for _, w in pares)
+    return round(sum(v * w for v, w in pares) / peso) if peso else 0
+
+
+@router.post("/volume/sincronizar")
+def sincronizar_volume(body: SyncIn, user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db)):
+    ano, mes = int(body.mes[:4]), int(body.mes[5:])
+    if not 1 <= mes <= 12:
+        raise HTTPException(400, "Mês inválido.")
+    de, ate = date(ano, mes, 1), date(ano, mes, calendar.monthrange(ano, mes)[1])
+    linhas = _buscar_checkpoint(de, ate)
+    tel = wa = 0
+    por_setor: dict = {}
+    dias = set()
+    for l in linhas:
+        t, w = int(l.get("telefone") or 0), int(l.get("whatsapp") or 0)
+        tel += t; wa += w
+        if t or w:
+            dias.add(l.get("data"))
+        s = por_setor.setdefault(str(l.get("setor") or "?"), {"telefone": 0, "whatsapp": 0})
+        s["telefone"] += t; s["whatsapp"] += w
+    tma_tel = _media([(l.get("tma_tel_seg"), int(l.get("telefone") or 0)) for l in linhas])
+    tme_tel = _media([(l.get("tme_tel_seg"), int(l.get("telefone") or 0)) for l in linhas])
+    tme_wa = _media([(l.get("tme_wa_seg"), int(l.get("whatsapp") or 0)) for l in linhas])
+    v = db.get(GcVolume, body.mes) or GcVolume(mes=body.mes, tma_wa_seg=0)
+    v.telefone, v.whatsapp, v.tma_tel_seg, v.tme_seg = tel, wa, tma_tel, tme_tel
+    # O Checkpoint não informa o TMA do WhatsApp: mantém o que já foi digitado.
+    db.add(v); db.commit(); _log(db, user, "sincronizar_volume", body.mes)
+    return {"mes": body.mes, "telefone": tel, "whatsapp": wa, "tma_tel_seg": tma_tel, "tme_tel_seg": tme_tel, "tme_wa_seg": tme_wa,
+            "tma_wa_seg": v.tma_wa_seg, "dias_com_dado": len(dias), "por_setor": por_setor}
+
+
 # ---------------- visão geral ----------------
 def _custos_ativos(db: Session, enc: float):
     """[(Colaborador, GcPessoa, custo_dict)] só de quem tem custo cadastrado."""
@@ -368,7 +432,8 @@ def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends
     custos = [custo_pessoa(reg[c.id], enc)["total"] for c in dir_pessoas if c.id in reg]
     mensal_total = sum(custo_pessoa(g, enc)["total"] for c in ativos if (g := reg.get(c.id))) + _equip_mensal(db)[0]
     return {
-        "volume": None if not v else {"mes": v.mes, "telefone": v.telefone, "whatsapp": v.whatsapp, "tma_tel_seg": v.tma_tel_seg, "tma_wa_seg": v.tma_wa_seg},
+        "volume": None if not v else {"mes": v.mes, "telefone": v.telefone, "whatsapp": v.whatsapp, "tma_tel_seg": v.tma_tel_seg,
+                                      "tma_wa_seg": v.tma_wa_seg or int(num(p, "tma_wa_estimado_seg")), "tma_wa_estimado": not v.tma_wa_seg},
         "horas_mes": num(p, "horas_mes"), "absenteismo_pct": num(p, "absenteismo_pct"), "ocupacao_pct": num(p, "ocupacao_pct"),
         "wa_concorrencia": num(p, "wa_concorrencia"), "setores_diretos": diretos,
         "pessoas_diretas": len(dir_pessoas), "custo_medio_direto": (sum(custos) / len(custos)) if custos else None,

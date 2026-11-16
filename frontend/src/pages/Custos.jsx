@@ -253,6 +253,15 @@ function Capacidade({ showToast }) {
       reload(); showToast("Volume salvo.");
     } catch (e) { showToast(e.message); }
   };
+  const sincronizar = async () => {
+    try {
+      const r = await api.post("/custos/volume/sincronizar", { mes: f.mes });
+      const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+      setF((x) => ({ ...x, telefone: r.telefone, whatsapp: r.whatsapp, tma_tel: mmss(r.tma_tel_seg), tma_wa: r.tma_wa_seg ? mmss(r.tma_wa_seg) : x.tma_wa }));
+      setVols(await api.get("/custos/volume")); reload();
+      showToast(`Checkpoint: ${nint(r.telefone)} ligações e ${nint(r.whatsapp)} WhatsApp em ${r.dias_com_dado} dia(s) preenchido(s).`);
+    } catch (e) { showToast(e.message); }
+  };
   if (error) return <ErrorBox error={error} />;
   if (!cap) return <Spinner />;
   const v = cap.volume;
@@ -285,7 +294,7 @@ function Capacidade({ showToast }) {
   const mm = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   return (
     <>
-      <div className="info-box">Quanto o volume pede de gente. Telefone e WhatsApp usam o TMA informado; o WhatsApp divide por {cap.wa_concorrencia} conversas simultâneas. Atendimento direto = {cap.setores_diretos.join(", ")} ({cap.pessoas_diretas} pessoa(s)); ajuste em Parâmetros. O volume é digitado aqui até a integração com o Checkpoint.</div>
+      <div className="info-box">Quanto o volume pede de gente. Telefone e WhatsApp usam o TMA informado; o WhatsApp divide por {cap.wa_concorrencia} conversas simultâneas. Atendimento direto = {cap.setores_diretos.join(", ")} ({cap.pessoas_diretas} pessoa(s)); ajuste em Parâmetros. "Buscar do Checkpoint" preenche telefone, WhatsApp e TMA do telefone do mês escolhido. O Checkpoint não informa o TMA do WhatsApp: se você não digitar, a capacidade usa o TMA estimado de WhatsApp dos parâmetros.</div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="section-title">Volume do mês</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -294,6 +303,7 @@ function Capacidade({ showToast }) {
           <div className="field"><label>Atend. WhatsApp</label><input type="number" value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} /></div>
           <div className="field"><label>TMA telefone (mm:ss)</label><input value={f.tma_tel} placeholder="06:18" onChange={(e) => setF({ ...f, tma_tel: e.target.value })} /></div>
           <div className="field"><label>TMA WhatsApp (mm:ss)</label><input value={f.tma_wa} placeholder="11:40" onChange={(e) => setF({ ...f, tma_wa: e.target.value })} /></div>
+          <button className="btn btn-ghost" onClick={sincronizar}>Buscar do Checkpoint</button>
           <button className="btn btn-primary" onClick={salvar}>Salvar volume</button>
         </div>
         {vols && vols.length > 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>Último: {vols[0].mes} · {nint(vols[0].telefone)} tel + {nint(vols[0].whatsapp)} WhatsApp · TMA {mm(vols[0].tma_tel_seg)} / {mm(vols[0].tma_wa_seg)}</div>}
@@ -311,6 +321,7 @@ function Capacidade({ showToast }) {
               ))}
             </div>
           </div>
+          {v.tma_wa_estimado && <div className="info-box">O WhatsApp está calculado com TMA estimado de {mm(v.tma_wa_seg)}, porque ainda não há o TMA real. Ajuste a estimativa em Acessos e parâmetros.</div>}
           {blocoSim}
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Menos volume só vira economia se a capacidade que sobra for realocada ou desligada. Monitoramento e ATP (estrutura) não diminuem com o volume.</div>
         </>
@@ -410,7 +421,7 @@ function Ausencias() {
 const ROTULOS = {
   encargos_pct: "Encargos + provisão férias/13º (% sobre salário e adicionais)", horas_mes: "Horas de trabalho por pessoa no mês", absenteismo_pct: "Absenteísmo (%)",
   ocupacao_pct: "Ocupação-alvo (%)", wa_concorrencia: "Conversas simultâneas no WhatsApp", setores_diretos: "Setores de atendimento direto (separados por vírgula, igual ao cadastro)",
-  rescisao_encargos_pct: "Encargos patronais sobre verbas da rescisão (%)", recrutamento: "Custo de recrutamento e seleção (R$)", cobertura_vaga: "Cobertura da vaga durante aviso/seleção (R$)",
+  tma_wa_estimado_seg: "TMA estimado do WhatsApp, em segundos (usado enquanto não houver o real)", rescisao_encargos_pct: "Encargos patronais sobre verbas da rescisão (%)", recrutamento: "Custo de recrutamento e seleção (R$)", cobertura_vaga: "Cobertura da vaga durante aviso/seleção (R$)",
   exp_etapa1_dias: "Experiência, etapa 1 (dias)", exp_etapa1_prod_pct: "Produtividade na etapa 1 (%)", exp_etapa2_dias: "Experiência, etapa 2 (dias)", exp_etapa2_prod_pct: "Produtividade na etapa 2 (%)",
 };
 function Config({ showToast }) {
