@@ -306,6 +306,11 @@ function Capacidade({ showToast }) {
           <button className="btn btn-ghost" onClick={sincronizar}>Buscar do Checkpoint</button>
           <button className="btn btn-primary" onClick={salvar}>Salvar volume</button>
         </div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
+          {!cap.sync_ativa ? "Busca automática desligada: falta CHECKPOINT_API_KEY no .env do Escala." : cap.ultima_sync
+            ? `Busca automática do Checkpoint todo dia às 06:00. Última: ${cap.ultima_sync.quando.replace("T", " ")} (${cap.ultima_sync.ok ? "ok" : `erro: ${cap.ultima_sync.msg}`}).`
+            : "Busca automática do Checkpoint todo dia às 06:00. Ainda não rodou."}
+        </div>
         {vols && vols.length > 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>Último: {vols[0].mes} · {nint(vols[0].telefone)} tel + {nint(vols[0].whatsapp)} WhatsApp · TMA {mm(vols[0].tma_tel_seg)} / {mm(vols[0].tma_wa_seg)}</div>}
       </div>
       {!v ? <div className="empty">Informe o volume de um mês para simular.</div> : (

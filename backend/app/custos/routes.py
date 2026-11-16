@@ -305,12 +305,12 @@ def _media(pares: list[tuple]) -> int:
     return round(sum(v * w for v, w in pares) / peso) if peso else 0
 
 
-@router.post("/volume/sincronizar")
-def sincronizar_volume(body: SyncIn, user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db)):
-    ano, mes = int(body.mes[:4]), int(body.mes[5:])
-    if not 1 <= mes <= 12:
+def sincronizar_mes(db: Session, mes: str) -> dict:
+    """Busca o mês no Checkpoint e grava em gc_volume. Usada pelo botão e pela rotina diária."""
+    ano, m = int(mes[:4]), int(mes[5:])
+    if not 1 <= m <= 12:
         raise HTTPException(400, "Mês inválido.")
-    de, ate = date(ano, mes, 1), date(ano, mes, calendar.monthrange(ano, mes)[1])
+    de, ate = date(ano, m, 1), date(ano, m, calendar.monthrange(ano, m)[1])
     linhas = _buscar_checkpoint(de, ate)
     tel = wa = 0
     por_setor: dict = {}
@@ -325,12 +325,30 @@ def sincronizar_volume(body: SyncIn, user: Colaborador = Depends(exigir_acesso),
     tma_tel = _media([(l.get("tma_tel_seg"), int(l.get("telefone") or 0)) for l in linhas])
     tme_tel = _media([(l.get("tme_tel_seg"), int(l.get("telefone") or 0)) for l in linhas])
     tme_wa = _media([(l.get("tme_wa_seg"), int(l.get("whatsapp") or 0)) for l in linhas])
-    v = db.get(GcVolume, body.mes) or GcVolume(mes=body.mes, tma_wa_seg=0)
+    v = db.get(GcVolume, mes) or GcVolume(mes=mes, tma_wa_seg=0)
     v.telefone, v.whatsapp, v.tma_tel_seg, v.tme_seg = tel, wa, tma_tel, tme_tel
     # O Checkpoint não informa o TMA do WhatsApp: mantém o que já foi digitado.
-    db.add(v); db.commit(); _log(db, user, "sincronizar_volume", body.mes)
-    return {"mes": body.mes, "telefone": tel, "whatsapp": wa, "tma_tel_seg": tma_tel, "tme_tel_seg": tme_tel, "tme_wa_seg": tme_wa,
+    db.add(v); db.commit()
+    return {"mes": mes, "telefone": tel, "whatsapp": wa, "tma_tel_seg": tma_tel, "tme_tel_seg": tme_tel, "tme_wa_seg": tme_wa,
             "tma_wa_seg": v.tma_wa_seg, "dias_com_dado": len(dias), "por_setor": por_setor}
+
+
+def registrar_sync(db: Session, origem: str, ok: bool, msg: str):
+    valor = f"{datetime.now().isoformat(timespec='minutes')}|{origem}|{'ok' if ok else 'erro'}|{msg}"
+    r = db.get(GcParam, "sync_ultima")
+    if r:
+        r.valor = valor
+    else:
+        db.add(GcParam(chave="sync_ultima", valor=valor))
+    db.commit()
+
+
+@router.post("/volume/sincronizar")
+def sincronizar_volume(body: SyncIn, user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db)):
+    r = sincronizar_mes(db, body.mes)
+    _log(db, user, "sincronizar_volume", body.mes)
+    registrar_sync(db, "manual", True, body.mes)
+    return r
 
 
 # ---------------- visão geral ----------------
@@ -419,6 +437,14 @@ def cct(user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db
     return {"ciclo": ciclo, "linhas": linhas}
 
 
+def _ultima_sync(db: Session):
+    r = db.get(GcParam, "sync_ultima")
+    if not r:
+        return None
+    q, origem, st, msg = (r.valor.split("|", 3) + ["", "", "", ""])[:4]
+    return {"quando": q, "origem": origem, "ok": st == "ok", "msg": msg}
+
+
 # ---------------- capacidade ----------------
 @router.get("/capacidade")
 def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db)):
@@ -438,6 +464,8 @@ def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends
         "wa_concorrencia": num(p, "wa_concorrencia"), "setores_diretos": diretos,
         "pessoas_diretas": len(dir_pessoas), "custo_medio_direto": (sum(custos) / len(custos)) if custos else None,
         "custo_mensal_total": mensal_total,
+        "ultima_sync": _ultima_sync(db),
+        "sync_ativa": bool(settings.checkpoint_api_key),
     }
 
 

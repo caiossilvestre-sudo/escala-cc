@@ -20,6 +20,7 @@ from app.core.security import hash_password
 from app.db.models import Colaborador
 from app.db.session import Base, SessionLocal, engine, run_safe_migrations
 from app.custos import router as custos_router
+from app.custos.auto import iniciar_agendador
 from app.custos.routes import seed_acessos
 from app.ferramentas import router as ferramentas_router
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -66,6 +67,7 @@ def on_startup():
     db = SessionLocal()
     try:
         seed_acessos(db)
+        iniciar_agendador()
         if db.query(Colaborador).count() == 0:
             admin_email = os.getenv("FIRST_ADMIN_EMAIL")
             admin_password = os.getenv("FIRST_ADMIN_PASSWORD")
