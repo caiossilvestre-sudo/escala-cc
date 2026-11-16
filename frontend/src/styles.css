@@ -48,6 +48,11 @@ body {
 .nav button { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; border: none; background: transparent; color: #AEB4C4; font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer; text-align: left; width: 100%; }
 .nav button:hover { background: #383B41; color: #fff; }
 .nav button.active { background: var(--primary); color: #fff; }
+.nav button.nav-group-toggle { justify-content: space-between; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #8A92A6; padding: 10px 10px 6px; border-radius: 6px; }
+.nav button.nav-group-toggle:hover { background: transparent; color: #fff; }
+.nav-group-toggle .seta { transition: transform .15s; transform: rotate(-90deg); }
+.nav-group-toggle .seta.aberta { transform: rotate(0); }
+.nav-rodape { margin-bottom: 4px; }
 .nav .badge { margin-left: auto; background: var(--danger); color: white; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px; }
 
 /* Rodapé fixo embaixo da sidebar — Trocar senha e Sair ficam separados do

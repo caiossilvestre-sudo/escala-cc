@@ -88,6 +88,35 @@ const NAV_CUSTOS = { grupo: "Gestão de custos", itens: [
   { id: "gc-config", label: "Acessos e parâmetros" },
 ] };
 
+// Grupos que abrem/fecham (menu suspenso). "Visão geral" / "Meu dia a dia" ficam sempre abertos
+// e "Comunicação" fica fixa no rodapé da barra lateral.
+const GRUPOS_FIXOS = ["Visão geral", "Meu dia a dia"];
+const GRUPO_RODAPE = "Comunicação";
+
+function GrupoNav({ secao, activeTab, onIr }) {
+  const fixo = GRUPOS_FIXOS.includes(secao.grupo);
+  const temAtivo = secao.itens.some((i) => i.id === activeTab);
+  const [aberto, setAberto] = useState(temAtivo);
+  // ao navegar para uma página do grupo (ex.: pelo Dashboard), ele abre sozinho
+  useEffect(() => { if (temAtivo) setAberto(true); }, [temAtivo]);
+  const mostrar = fixo || aberto;
+  return (
+    <div className="nav-group">
+      {fixo ? (
+        <div className="nav-group-label">{secao.grupo}</div>
+      ) : (
+        <button type="button" className="nav-group-toggle" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
+          {secao.grupo}
+          <svg className={"seta" + (aberto ? " aberta" : "")} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+      )}
+      {mostrar && secao.itens.map((item) => (
+        <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => onIr(item.id)}>{item.label}</button>
+      ))}
+    </div>
+  );
+}
+
 const ROLE_LABEL = { admin: "Administrador", visualizador: "Visualizador (só leitura)", supervisor: "Supervisor", colaborador: "Colaborador", ferramentas: "Somente Ferramentas" };
 const TIPO_ICONE = { aniversario: "🎉", aniversario_trabalho: "🎊", mensal: "📅", semanal: "📌", cobranca: "⏰", passagem_entrada: "📋" };
 
@@ -227,17 +256,20 @@ function Shell() {
           <div className="role">{ROLE_LABEL[user.role] || user.role}{user.equipe ? ` · ${user.equipe}` : ""}</div>
         </div>
         <nav className="nav">
-          {nav.map((secao) => (
-            <div key={secao.grupo} className="nav-group">
+          {nav.filter((g) => g.grupo !== GRUPO_RODAPE).map((secao) => (
+            <GrupoNav key={secao.grupo} secao={secao} activeTab={activeTab} onIr={setTab} />
+          ))}
+          <MenuFerramentas acesso={ft} ativo={activeTab} onIr={setTab} />
+        </nav>
+        <div className="sidebar-footer">
+          {nav.filter((g) => g.grupo === GRUPO_RODAPE).map((secao) => (
+            <div key={secao.grupo} className="nav nav-rodape">
               <div className="nav-group-label">{secao.grupo}</div>
               {secao.itens.map((item) => (
                 <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>
               ))}
             </div>
           ))}
-          <MenuFerramentas acesso={ft} ativo={activeTab} onIr={setTab} />
-        </nav>
-        <div className="sidebar-footer">
           <div className="nav-footnote">
             {isAdmin && "Você cadastra pessoas, plantões, aprova folgas, férias e atestados — em todos os setores."}
             {isViewer && "Você enxerga tudo, mas não consegue cadastrar, aprovar ou alterar nada — acesso só de leitura."}
