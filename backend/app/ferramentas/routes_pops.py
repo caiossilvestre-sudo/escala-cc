@@ -133,12 +133,12 @@ def sync_fim(body: FimIn, db: Session = Depends(get_db)):
 def _pop_dict(p: FtPop) -> dict:
     return {"id": p.id, "codigo": p.codigo, "titulo": p.titulo, "versao": p.versao, "pasta": p.pasta,
             "caminho": p.caminho, "paginas": p.paginas, "erro": bool(p.erro),
-            "atualizado_em": p.sincronizado_em}
+            "link": P.link_sharepoint(p.caminho), "atualizado_em": p.sincronizado_em}
 
 
 @router.get("")
 def listar(db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)):
-    pops = db.query(FtPop).order_by(FtPop.pasta, FtPop.codigo, FtPop.titulo).all()
+    pops = [p for p in db.query(FtPop).order_by(FtPop.pasta, FtPop.codigo, FtPop.titulo).all() if P.pode_ver(user, p.caminho)]
     ult = db.query(FtPopSync).order_by(FtPopSync.em.desc()).first()
     return {
         "pops": [_pop_dict(p) for p in pops],
@@ -152,7 +152,7 @@ def listar(db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)
 def buscar(request: Request, q: str = Query(..., min_length=2, max_length=300), db: Session = Depends(get_db),
            user: Colaborador = Depends(CONSULTAR)):
     chave = db.query(func.count(FtPop.id), func.max(FtPop.sincronizado_em)).one()
-    achados, usados = P.indice(db, tuple(chave)).buscar(q)
+    achados, usados = P.indice(db, tuple(chave)).buscar(q, P.pastas_do(user))
     trechos = {t.id: t for t in db.query(FtPopTrecho).filter(FtPopTrecho.id.in_([a[0] for a in achados])).all()} if achados else {}
     pops = {p.id: p for p in db.query(FtPop).filter(FtPop.id.in_({t.pop_id for t in trechos.values()})).all()} if trechos else {}
     resultados = []
@@ -171,7 +171,8 @@ def buscar(request: Request, q: str = Query(..., min_length=2, max_length=300), 
 def vizinhos(trecho_id: str, db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)):
     """O trecho anterior e o seguinte do mesmo POP ("ver mais" na tela)."""
     t = db.get(FtPopTrecho, trecho_id)
-    if not t:
+    pop = db.get(FtPop, t.pop_id) if t else None
+    if not t or not pop or not P.pode_ver(user, pop.caminho):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Trecho não encontrado.")
     viz = (db.query(FtPopTrecho).filter(FtPopTrecho.pop_id == t.pop_id, FtPopTrecho.ordem.in_([t.ordem - 1, t.ordem + 1]))
            .order_by(FtPopTrecho.ordem).all())
@@ -180,25 +181,13 @@ def vizinhos(trecho_id: str, db: Session = Depends(get_db), user: Colaborador = 
 
 
 @router.get("/arquivo/{nome}")
-def arquivo(nome: str, user: Colaborador = Depends(CONSULTAR)):
+def arquivo(nome: str, db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)):
     """Print (.jpg) de um POP. Nome gerado pelo próprio sistema."""
     caminho = P.nome_arquivo_seguro(nome)
-    if not caminho or not caminho.exists():
+    pop = db.get(FtPop, nome[:36]) if caminho else None   # nome = "<id do POP>-<imagem>.jpg"
+    if not caminho or not caminho.exists() or not pop or not P.pode_ver(user, pop.caminho):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Arquivo não encontrado.")
     return Response(caminho.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
-
-
-@router.get("/{pop_id}/pagina/{n}")
-def pagina(pop_id: str, n: int, db: Session = Depends(get_db), user: Colaborador = Depends(CONSULTAR)):
-    """Página do POP como imagem: o visualizador do sistema mostra o documento
-    sempre na versão sincronizada, sem entregar o PDF para download."""
-    pop = db.get(FtPop, pop_id)
-    if not pop:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Procedimento não encontrado.")
-    jpg = P.pagina_jpg(pop.id, n)
-    if not jpg:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Página não encontrada.")
-    return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/buscas-sem-resultado")

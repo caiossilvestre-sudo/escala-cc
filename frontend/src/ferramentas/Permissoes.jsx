@@ -9,11 +9,11 @@ const CURTO = {
   "nvr.gerenciar": "Gravadores",
   "passagem.registrar": "Registrar", "passagem.gerenciar": "Gestor",
   "acessos.usar": "Usar", "acessos.gerenciar": "Editar tudo",
-  "procedimentos.consultar": "Consultar",
+  "procedimentos.consultar": "Consultar", "procedimentos.todos": "Todos os setores",
   "escalation.infra": "Infraestrutura", "escalation.n2": "Operações (N2)",
   "ft.admin": "Permissões",
 };
-const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "passagem.gerenciar": "passagem.registrar", "acessos.gerenciar": "acessos.usar" };
+const IMPLICA = { "doc.editar": "doc.ver", "doc.senhas": "doc.ver", "doc.excluir": "doc.ver", "doc.solicitar": "doc.ver", "doc.tratar": "doc.ver", "passagem.gerenciar": "passagem.registrar", "acessos.gerenciar": "acessos.usar", "procedimentos.todos": "procedimentos.consultar" };
 // Colunas agrupadas no cabeçalho (prefixo do código -> grupo). Toda coluna tem
 // grupo; cada grupo ganha faixa de cor própria e linha separadora.
 const GRUPOS = { doc: "LifeGuard · Documentação", nvr: "LifeGuard · Documentação", passagem: "Passagem de plantão", acessos: "Acessos do setor", procedimentos: "Procedimentos", escalation: "Escalation", ft: "Administração" };
@@ -129,7 +129,7 @@ export default function Permissoes({ onVoltar, showToast }) {
             <dt>Acessos do setor</dt>
             <dd><b>Usar</b> ver links e senhas, incluir e alterar o que a própria pessoa cadastrou · <b>Editar tudo</b> alterar qualquer item/senha e organizar as seções</dd>
             <dt>Procedimentos</dt>
-            <dd><b>Consultar</b> buscar nos POPs do SharePoint e perguntar ao assistente (em construção)</dd>
+            <dd><b>Consultar</b> buscar e abrir os POPs do próprio setor (N1: Uso comum + N1 · N2 e Monitoramento: Uso comum + N2 + Monitoramento) — já vale automaticamente para quem é dessas equipes; marque só para outras pessoas · <b>Todos os setores</b> ver os POPs de todos (coordenação, supervisão)</dd>
             <dt>Escalation</dt>
             <dd><b>Infraestrutura</b> link externo de escalation · <b>Operações (N2)</b> página do N2 (em construção)</dd>
             <dt>Administração</dt>

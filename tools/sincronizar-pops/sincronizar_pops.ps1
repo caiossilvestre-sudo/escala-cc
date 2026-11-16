@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 try { (Get-Process -Id $PID).PriorityClass = 'BelowNormal' } catch {}
 
 $Servidor  = if ($env:POPS_SERVIDOR) { $env:POPS_SERVIDOR } else { 'https://suporte-tecnico.silvertec.net.br' }
-$Subpastas = '^(00|02|04) - '          # Uso comum, N2 e Monitoramento (N1 fica de fora por enquanto)
+$Subpastas = '^(00|01|02|04) - '       # Uso comum, N1, N2 e Monitoramento (a 99 - Arquivo antigo fica de fora)
 $TamMax    = 11MB
 $Aqui      = $PSScriptRoot
 $Log       = Join-Path $Aqui 'sincronizacao.log'

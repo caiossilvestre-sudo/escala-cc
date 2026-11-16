@@ -500,7 +500,7 @@ body.ft-celular .main .content { padding: 0; }
 .pr-lista-topo input { flex: 0 1 280px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font: inherit; font-size: 12.5px; }
 .pr-grupo { margin-top: 14px; }
 .pr-grupo-nome { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 4px; }
-.pr-item { width: 100%; border: 0; background: none; text-align: left; font: inherit; cursor: pointer; display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 13px; }
+.pr-item { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 13px; }
 .pr-item:hover { background: #F6F7F9; }
 .pr-item .mono { font-size: 11.5px; color: var(--text-muted); }
 .pr-item span:last-child { opacity: .5; font-size: 11px; }
@@ -510,12 +510,3 @@ body.ft-celular .main .content { padding: 0; }
   .pr-item { grid-template-columns: 1fr auto; }
   .pr-item .mono { grid-column: 1 / -1; }
 }
-
-/* visualizador do POP (dentro do sistema, sem o PDF) */
-.pr-vis { position: fixed; inset: 0; z-index: 60; background: #2B2E33; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; }
-.pr-vis-topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface, #fff); border-bottom: 1px solid var(--border); }
-.pr-vis-corpo { flex: 1; overflow: auto; padding: 18px 12px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.pr-pag { width: min(900px, 100%); min-height: 300px; background: white; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
-.pr-pag img { width: 100%; display: block; pointer-events: none; }
-.pr-pag-vazia { aspect-ratio: 210 / 297; display: flex; align-items: center; justify-content: center; color: #9AA2B8; font-size: 12px; }
-@media print { .pr-vis { display: none !important; } }
