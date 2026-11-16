@@ -65,3 +65,14 @@ class GcLog(Base):
     acao = Column(String, nullable=False)
     alvo = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GcVolumeSetor(Base):
+    """Volume do mês por setor do Checkpoint (n1, n2). Preenchido pela busca automática."""
+    __tablename__ = "gc_volume_setor"
+    mes = Column(String, primary_key=True)
+    setor = Column(String, primary_key=True)           # "n1" ou "n2"
+    telefone = Column(Integer, nullable=False, default=0)
+    whatsapp = Column(Integer, nullable=False, default=0)
+    tma_tel_seg = Column(Integer, nullable=False, default=0)
+    dias = Column(Integer, nullable=False, default=0)  # dias com dado preenchido

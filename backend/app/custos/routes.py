@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_colaborador
-from app.custos.models import GcAcesso, GcEquip, GcLog, GcParam, GcPessoa, GcVolume
+from app.custos.models import GcAcesso, GcEquip, GcLog, GcParam, GcPessoa, GcVolume, GcVolumeSetor
 from app.core.config import settings
 from app.db.models import Atestado, Colaborador, Ferias, SolicitacaoFolga
 from app.db.session import get_db
@@ -37,6 +37,8 @@ PARAMS_PADRAO = {
     "wa_concorrencia": "2",        # conversas simultâneas no WhatsApp
     "tma_wa_estimado_seg": "700",  # TMA do WhatsApp usado enquanto o Checkpoint não informar (700 s = 11:40)
     "setores_diretos": "Suporte N1,Suporte N2",
+    "setor_n1": "Suporte N1", "setor_n2": "Suporte N2", "setor_monitoramento": "Monitoramento",   # nomes dos setores no cadastro do Escala
+    "dias_operados_mes": "26",     # dias em que há atendimento no mês (projeção de mês em andamento)
     "rescisao_encargos_pct": "28", # INSS patronal + RAT + terceiros sobre aviso/13º
     "recrutamento": "1500",
     "cobertura_vaga": "1200",
@@ -325,6 +327,13 @@ def sincronizar_mes(db: Session, mes: str) -> dict:
     tma_tel = _media([(l.get("tma_tel_seg"), int(l.get("telefone") or 0)) for l in linhas])
     tme_tel = _media([(l.get("tme_tel_seg"), int(l.get("telefone") or 0)) for l in linhas])
     tme_wa = _media([(l.get("tme_wa_seg"), int(l.get("whatsapp") or 0)) for l in linhas])
+    for chave, s in por_setor.items():
+        ls = [l for l in linhas if str(l.get("setor") or "?") == chave]
+        gs = db.get(GcVolumeSetor, (mes, chave)) or GcVolumeSetor(mes=mes, setor=chave)
+        gs.telefone, gs.whatsapp = s["telefone"], s["whatsapp"]
+        gs.tma_tel_seg = _media([(l.get("tma_tel_seg"), int(l.get("telefone") or 0)) for l in ls])
+        gs.dias = len({l.get("data") for l in ls if int(l.get("telefone") or 0) or int(l.get("whatsapp") or 0)})
+        db.add(gs)
     v = db.get(GcVolume, mes) or GcVolume(mes=mes, tma_wa_seg=0)
     v.telefone, v.whatsapp, v.tma_tel_seg, v.tme_seg = tel, wa, tma_tel, tme_tel
     # O Checkpoint não informa o TMA do WhatsApp: mantém o que já foi digitado.
@@ -450,19 +459,43 @@ def _ultima_sync(db: Session):
 def capacidade(user: Colaborador = Depends(exigir_acesso), db: Session = Depends(get_db)):
     p = params(db)
     v = db.query(GcVolume).order_by(GcVolume.mes.desc()).first()
-    diretos = [s.strip() for s in p["setores_diretos"].split(",") if s.strip()]
     ativos = _ativos(db)
     enc = num(p, "encargos_pct")
     reg = {g.colaborador_id: g for g in db.query(GcPessoa).all()}
-    dir_pessoas = [c for c in ativos if c.equipe in diretos]
-    custos = [custo_pessoa(reg[c.id], enc)["total"] for c in dir_pessoas if c.id in reg]
+
+    def grupo(nomes: list[str]):
+        pess = [c for c in ativos if c.equipe in nomes]
+        custos = [custo_pessoa(reg[c.id], enc)["total"] for c in pess if c.id in reg]
+        return {"pessoas": len(pess), "sem_custo": len(pess) - len(custos), "custo_mensal": sum(custos),
+                "custo_medio": (sum(custos) / len(custos)) if custos else None}
+
     mensal_total = sum(custo_pessoa(g, enc)["total"] for c in ativos if (g := reg.get(c.id))) + _equip_mensal(db)[0]
+    tma_wa = (v.tma_wa_seg if v else 0) or int(num(p, "tma_wa_estimado_seg"))
+    dias_op = num(p, "dias_operados_mes")
+    segmentos, mes = [], v.mes if v else None
+    por_setor = db.query(GcVolumeSetor).filter(GcVolumeSetor.mes == mes).all() if mes else []
+    if por_setor:
+        nomes = {"n1": ("Suporte N1", p["setor_n1"]), "n2": ("Suporte N2", p["setor_n2"])}
+        em_andamento = mes == date.today().strftime("%Y-%m")
+        for chave in ("n1", "n2"):
+            gs = next((x for x in por_setor if x.setor == chave), None)
+            rotulo, equipe = nomes[chave]
+            fator = (dias_op / gs.dias) if (gs and em_andamento and 0 < gs.dias < dias_op) else 1
+            segmentos.append({"chave": chave, "nome": rotulo, "equipe": equipe, **grupo([equipe]),
+                              "volume": None if not gs else {"telefone": round(gs.telefone * fator), "whatsapp": round(gs.whatsapp * fator),
+                                                             "tma_tel_seg": gs.tma_tel_seg, "tma_wa_seg": tma_wa, "dias": gs.dias, "projetado": fator != 1}})
+    elif v:
+        diretos = [s.strip() for s in p["setores_diretos"].split(",") if s.strip()]
+        segmentos.append({"chave": "total", "nome": "Atendimento direto", "equipe": ", ".join(diretos), **grupo(diretos),
+                          "volume": {"telefone": v.telefone, "whatsapp": v.whatsapp, "tma_tel_seg": v.tma_tel_seg, "tma_wa_seg": tma_wa, "dias": 0, "projetado": False}})
+    mon = {"nome": "Monitoramento", "equipe": p["setor_monitoramento"], **grupo([p["setor_monitoramento"]])}
+    usados = {x["equipe"] for x in segmentos} | {p["setor_monitoramento"]}
+    resto = sum(custo_pessoa(g, enc)["total"] for c in ativos if c.equipe not in usados and (g := reg.get(c.id)))
     return {
-        "volume": None if not v else {"mes": v.mes, "telefone": v.telefone, "whatsapp": v.whatsapp, "tma_tel_seg": v.tma_tel_seg,
-                                      "tma_wa_seg": v.tma_wa_seg or int(num(p, "tma_wa_estimado_seg")), "tma_wa_estimado": not v.tma_wa_seg},
+        "mes": mes, "segmentos": segmentos, "monitoramento": mon,
+        "outros_custo_mensal": resto + _equip_mensal(db)[0],
         "horas_mes": num(p, "horas_mes"), "absenteismo_pct": num(p, "absenteismo_pct"), "ocupacao_pct": num(p, "ocupacao_pct"),
-        "wa_concorrencia": num(p, "wa_concorrencia"), "setores_diretos": diretos,
-        "pessoas_diretas": len(dir_pessoas), "custo_medio_direto": (sum(custos) / len(custos)) if custos else None,
+        "wa_concorrencia": num(p, "wa_concorrencia"), "tma_wa_estimado": not (v and v.tma_wa_seg),
         "custo_mensal_total": mensal_total,
         "ultima_sync": _ultima_sync(db),
         "sync_ativa": bool(settings.checkpoint_api_key),

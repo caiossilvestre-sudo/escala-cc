@@ -246,8 +246,9 @@ function Capacidade({ showToast }) {
   const [dVol, setDVol] = useState(-10);
   const [dTma, setDTma] = useState(0);
   const [dAbs, setDAbs] = useState(0);
+  const mmss = (s) => { const [m, x] = String(s).split(":").map(Number); return (m || 0) * 60 + (x || 0); };
+  const mm = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const salvar = async () => {
-    const mmss = (s) => { const [m, x] = String(s).split(":").map(Number); return (m || 0) * 60 + (x || 0); };
     try {
       setVols(await api.put("/custos/volume", { mes: f.mes, telefone: Number(f.telefone) || 0, whatsapp: Number(f.whatsapp) || 0, tma_tel_seg: mmss(f.tma_tel), tma_wa_seg: mmss(f.tma_wa) }));
       reload(); showToast("Volume salvo.");
@@ -256,45 +257,36 @@ function Capacidade({ showToast }) {
   const sincronizar = async () => {
     try {
       const r = await api.post("/custos/volume/sincronizar", { mes: f.mes });
-      const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-      setF((x) => ({ ...x, telefone: r.telefone, whatsapp: r.whatsapp, tma_tel: mmss(r.tma_tel_seg), tma_wa: r.tma_wa_seg ? mmss(r.tma_wa_seg) : x.tma_wa }));
+      setF((x) => ({ ...x, telefone: r.telefone, whatsapp: r.whatsapp, tma_tel: mm(r.tma_tel_seg), tma_wa: r.tma_wa_seg ? mm(r.tma_wa_seg) : x.tma_wa }));
       setVols(await api.get("/custos/volume")); reload();
       showToast(`Checkpoint: ${nint(r.telefone)} ligações e ${nint(r.whatsapp)} WhatsApp em ${r.dias_com_dado} dia(s) preenchido(s).`);
     } catch (e) { showToast(e.message); }
   };
   if (error) return <ErrorBox error={error} />;
   if (!cap) return <Spinner />;
-  const v = cap.volume;
-  const calc = (fv, tmaSeg, absPct) => {
+
+  const calc = (seg, fv, tmaSeg, absPct) => {
+    const v = seg.volume;
     if (!v) return null;
-    const horas = (v.telefone * fv * Math.max(0, v.tma_tel_seg + tmaSeg) + v.whatsapp * fv * Math.max(0, v.tma_wa_seg + tmaSeg) / cap.wa_concorrencia) / 3600;
+    const horas = (v.telefone * fv * Math.max(0, v.tma_tel_seg + tmaSeg) + (v.whatsapp * fv * Math.max(0, v.tma_wa_seg + tmaSeg)) / cap.wa_concorrencia) / 3600;
     const prod = cap.horas_mes * (1 - absPct / 100) * (cap.ocupacao_pct / 100);
     const precisa = Math.ceil(horas / prod - 0.05);
-    const atend = Math.round((v.telefone + v.whatsapp) * fv);
-    return { horas, prod, precisa, atend };
+    return { horas, prod, precisa, atend: Math.round((v.telefone + v.whatsapp) * fv), sobra: seg.pessoas - precisa };
   };
-  const base = calc(1, 0, cap.absenteismo_pct);
-  const sim = calc(1 + dVol / 100, dTma, cap.absenteismo_pct + dAbs);
-  let blocoSim = null;
-  if (base && sim) {
-    const sobra = cap.pessoas_diretas - sim.precisa;
-    const cm = cap.custo_medio_direto || 0;
-    const cpaBase = cap.custo_mensal_total / base.atend;
-    const cpaIgual = cap.custo_mensal_total / sim.atend;
-    const cpaAjust = (cap.custo_mensal_total - Math.max(0, sobra) * cm) / sim.atend;
-    blocoSim = (
-      <Linha>
-        <Kpi label="Pessoas necessárias" value={sim.precisa} nota={`Quadro direto atual: ${cap.pessoas_diretas}`} />
-        <Kpi label={sobra >= 0 ? "Sobrando" : "Faltando"} value={Math.abs(sobra)} cor={sobra >= 0 ? "#1F5C3A" : "#A32E42"} nota={`Carga: ${Math.round(sim.horas)} h/mês · cada pessoa rende ${Math.round(sim.prod)} h`} />
-        <Kpi label="R$ por atendimento, equipe igual" value={brl(cpaIgual, 2)} nota={`Hoje: ${brl(cpaBase, 2)}`} cor={cpaIgual > cpaBase ? "#A32E42" : undefined} />
-        <Kpi label="R$ por atendimento, equipe ajustada" value={brl(cpaAjust, 2)} nota={sobra > 0 && cm ? `Economia de ${brl(sobra * cm)}/mês ao tirar ${sobra}` : "Sem sobra para ajustar"} />
-      </Linha>
-    );
-  }
-  const mm = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const linhas = cap.segmentos.map((seg) => ({ seg, base: calc(seg, 1, 0, cap.absenteismo_pct), sim: calc(seg, 1 + dVol / 100, dTma, cap.absenteismo_pct + dAbs) })).filter((l) => l.base);
+  const totAtendBase = linhas.reduce((s, l) => s + l.base.atend, 0);
+  const totAtendSim = linhas.reduce((s, l) => s + l.sim.atend, 0);
+  const totPrecisa = linhas.reduce((s, l) => s + l.sim.precisa, 0);
+  const totQuadro = linhas.reduce((s, l) => s + l.seg.pessoas, 0);
+  const economia = linhas.reduce((s, l) => s + Math.max(0, l.sim.sobra) * (l.seg.custo_medio || 0), 0);
+  const temCusto = cap.custo_mensal_total > 0;
+  const cpa = (custo, atend) => (temCusto && atend ? brl(custo / atend, 2) : "—");
+  const semCusto = [...cap.segmentos, cap.monitoramento].reduce((s, g) => s + (g.sem_custo || 0), 0);
+  const parcial = cap.segmentos.some((s) => s.volume?.projetado);
+  const sit = (n) => (n > 0 ? <span style={{ color: "#1F5C3A", fontWeight: 600 }}>{n} sobrando</span> : n < 0 ? <span style={{ color: "#A32E42", fontWeight: 600 }}>{-n} faltando</span> : "equilibrado");
   return (
     <>
-      <div className="info-box">Quanto o volume pede de gente. Telefone e WhatsApp usam o TMA informado; o WhatsApp divide por {cap.wa_concorrencia} conversas simultâneas. Atendimento direto = {cap.setores_diretos.join(", ")} ({cap.pessoas_diretas} pessoa(s)); ajuste em Parâmetros. "Buscar do Checkpoint" preenche telefone, WhatsApp e TMA do telefone do mês escolhido. O Checkpoint não informa o TMA do WhatsApp: se você não digitar, a capacidade usa o TMA estimado de WhatsApp dos parâmetros.</div>
+      <div className="info-box">Quanto o volume de cada setor pede de gente. N1 e N2 vêm do Checkpoint (busca automática todo dia) e são calculados separadamente; o Monitoramento não depende de volume de atendimento e entra como estrutura. O WhatsApp divide por {cap.wa_concorrencia} conversas simultâneas. Nomes dos setores e demais premissas em Acessos e parâmetros.</div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="section-title">Volume do mês</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -310,11 +302,16 @@ function Capacidade({ showToast }) {
           {!cap.sync_ativa ? "Busca automática desligada: falta CHECKPOINT_API_KEY no .env do Escala." : cap.ultima_sync
             ? `Busca automática do Checkpoint todo dia às 06:00. Última: ${cap.ultima_sync.quando.replace("T", " ")} (${cap.ultima_sync.ok ? "ok" : `erro: ${cap.ultima_sync.msg}`}).`
             : "Busca automática do Checkpoint todo dia às 06:00. Ainda não rodou."}
+          {" "}O TMA do WhatsApp não vem do Checkpoint: se ficar vazio, usa o estimado dos parâmetros.
         </div>
-        {vols && vols.length > 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>Último: {vols[0].mes} · {nint(vols[0].telefone)} tel + {nint(vols[0].whatsapp)} WhatsApp · TMA {mm(vols[0].tma_tel_seg)} / {mm(vols[0].tma_wa_seg)}</div>}
+        {vols && vols.length > 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Último mês registrado: {vols[0].mes} · {nint(vols[0].telefone)} tel + {nint(vols[0].whatsapp)} WhatsApp · TMA telefone {mm(vols[0].tma_tel_seg)}</div>}
       </div>
-      {!v ? <div className="empty">Informe o volume de um mês para simular.</div> : (
+      {linhas.length === 0 ? <div className="empty">Sem volume por setor ainda. Clique em "Buscar do Checkpoint" para o mês escolhido.</div> : (
         <>
+          {parcial && <div className="info-box">{cap.mes} ainda está em andamento: o volume foi projetado para o mês inteiro com base nos dias já preenchidos.</div>}
+          {cap.tma_wa_estimado && <div className="info-box">O WhatsApp está calculado com TMA estimado, porque ainda não há o TMA real. Ajuste a estimativa em Acessos e parâmetros.</div>}
+          {!temCusto && <div className="info-box">Ainda não há custos cadastrados, então o custo por atendimento aparece como "—". Cadastre em Cadastro de custos.</div>}
+          {temCusto && semCusto > 0 && <div className="info-box">{semCusto} pessoa(s) dos setores abaixo ainda estão sem custo cadastrado, então o custo e a economia estão subestimados.</div>}
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="section-title">E se mudar?</div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
@@ -326,9 +323,27 @@ function Capacidade({ showToast }) {
               ))}
             </div>
           </div>
-          {v.tma_wa_estimado && <div className="info-box">O WhatsApp está calculado com TMA estimado de {mm(v.tma_wa_seg)}, porque ainda não há o TMA real. Ajuste a estimativa em Acessos e parâmetros.</div>}
-          {blocoSim}
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Menos volume só vira economia se a capacidade que sobra for realocada ou desligada. Monitoramento e ATP (estrutura) não diminuem com o volume.</div>
+          <Linha>
+            <Kpi label="Pessoas necessárias (N1 + N2)" value={totPrecisa} nota={`Quadro atual: ${totQuadro}`} />
+            <Kpi label={totQuadro - totPrecisa >= 0 ? "Sobrando" : "Faltando"} value={Math.abs(totQuadro - totPrecisa)} cor={totQuadro - totPrecisa >= 0 ? "#1F5C3A" : "#A32E42"} nota="Soma dos dois setores, com o cenário acima" />
+            <Kpi label="R$ por atendimento, equipe igual" value={cpa(cap.custo_mensal_total, totAtendSim)} nota={`Hoje: ${cpa(cap.custo_mensal_total, totAtendBase)}`} />
+            <Kpi label="R$ por atendimento, equipe ajustada" value={cpa(cap.custo_mensal_total - economia, totAtendSim)} nota={economia > 0 ? `Economia de ${brl(economia)}/mês com a sobra de cada setor` : "Sem sobra para ajustar"} />
+          </Linha>
+          <div className="card">
+            <div className="section-title">Por setor</div>
+            <table className="tbl"><thead><tr><th>Setor</th><th style={{ textAlign: "right" }}>Atendimentos</th><th style={{ textAlign: "right" }}>Carga</th><th style={{ textAlign: "right" }}>Precisa</th><th style={{ textAlign: "right" }}>Quadro</th><th>Situação</th><th style={{ textAlign: "right" }}>Custo no mês</th></tr></thead>
+              <tbody>
+                {linhas.map((l) => (
+                  <tr key={l.seg.chave}><td><strong>{l.seg.nome}</strong><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>TMA tel {mm(l.seg.volume.tma_tel_seg)}</div></td>
+                    <td className="mono" style={{ textAlign: "right" }}>{nint(l.sim.atend)}</td><td className="mono" style={{ textAlign: "right" }}>{Math.round(l.sim.horas)} h</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{l.sim.precisa}</td><td className="mono" style={{ textAlign: "right" }}>{l.seg.pessoas}</td><td>{sit(l.sim.sobra)}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{l.seg.custo_mensal ? brl(l.seg.custo_mensal) : "—"}</td></tr>
+                ))}
+                <tr><td><strong>{cap.monitoramento.nome}</strong><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Estrutura: não varia com o volume</div></td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>—</td><td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.pessoas}</td><td>—</td><td className="mono" style={{ textAlign: "right" }}>{cap.monitoramento.custo_mensal ? brl(cap.monitoramento.custo_mensal) : "—"}</td></tr>
+                <tr><td><strong>Demais setores e equipamentos</strong></td><td /><td /><td /><td /><td /><td className="mono" style={{ textAlign: "right" }}>{cap.outros_custo_mensal ? brl(cap.outros_custo_mensal) : "—"}</td></tr>
+              </tbody></table>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>Menos volume só vira economia se a capacidade que sobra for realocada ou desligada.</div>
         </>
       )}
     </>
@@ -426,7 +441,7 @@ function Ausencias() {
 const ROTULOS = {
   encargos_pct: "Encargos + provisão férias/13º (% sobre salário e adicionais)", horas_mes: "Horas de trabalho por pessoa no mês", absenteismo_pct: "Absenteísmo (%)",
   ocupacao_pct: "Ocupação-alvo (%)", wa_concorrencia: "Conversas simultâneas no WhatsApp", setores_diretos: "Setores de atendimento direto (separados por vírgula, igual ao cadastro)",
-  tma_wa_estimado_seg: "TMA estimado do WhatsApp, em segundos (usado enquanto não houver o real)", rescisao_encargos_pct: "Encargos patronais sobre verbas da rescisão (%)", recrutamento: "Custo de recrutamento e seleção (R$)", cobertura_vaga: "Cobertura da vaga durante aviso/seleção (R$)",
+  tma_wa_estimado_seg: "TMA estimado do WhatsApp, em segundos (usado enquanto não houver o real)", setor_n1: "Nome do setor N1 no cadastro do Escala", setor_n2: "Nome do setor N2 no cadastro do Escala", setor_monitoramento: "Nome do setor Monitoramento no cadastro do Escala", dias_operados_mes: "Dias com atendimento no mês (para projetar mês em andamento)", rescisao_encargos_pct: "Encargos patronais sobre verbas da rescisão (%)", recrutamento: "Custo de recrutamento e seleção (R$)", cobertura_vaga: "Cobertura da vaga durante aviso/seleção (R$)",
   exp_etapa1_dias: "Experiência, etapa 1 (dias)", exp_etapa1_prod_pct: "Produtividade na etapa 1 (%)", exp_etapa2_dias: "Experiência, etapa 2 (dias)", exp_etapa2_prod_pct: "Produtividade na etapa 2 (%)",
 };
 function Config({ showToast }) {
